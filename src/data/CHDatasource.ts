@@ -190,8 +190,14 @@ export class Datasource
     return undefined;
   }
 
-  getSupportedSupplementaryQueryTypes(dsRequest: DataQueryRequest<CHQuery>): SupplementaryQueryType[] {
+  getSupportedSupplementaryQueryTypes(dsRequest?: DataQueryRequest<CHQuery>): SupplementaryQueryType[] {
+    // T3.3: Support supplementary queries for SQL mode when OTEL is configured
     if (dsRequest && dsRequest.targets.some((t) => t.editorType !== EditorType.Builder)) {
+      // Even in SQL mode, if OTEL is configured we can generate volume histograms
+      const logsOtelVersion = this.getLogsOtelVersion();
+      if (logsOtelVersion && this.getDefaultLogsTable()) {
+        return [SupplementaryQueryType.LogsVolume];
+      }
       return [];
     }
     return [SupplementaryQueryType.LogsVolume, SupplementaryQueryType.LogsSample];
@@ -354,8 +360,12 @@ export class Datasource
    * that Grafana manages directly.
    */
   private _getLogsVolumeSupplementaryQuery(query: CHQuery): CHQuery | undefined {
+    // T3.3: For SQL mode queries, generate volume from OTEL config if available
+    if (query.editorType === EditorType.SQL || !query.builderOptions) {
+      return this._getLogsVolumeFromOtelConfig(query);
+    }
+
     if (
-      query.editorType !== EditorType.Builder ||
       query.builderOptions.queryType !== QueryType.Logs ||
       query.builderOptions.mode !== BuilderMode.List ||
       query.builderOptions.database === '' ||
@@ -463,6 +473,77 @@ export class Datasource
       builderOptions: sampleBuilderOptions,
       rawSql: generateSql(sampleBuilderOptions),
       refId: `${query.refId}-sample`,
+      hide: true,
+    };
+  }
+
+  /**
+   * T3.3: Generate a logs volume query from OTEL config for SQL mode queries.
+   * This enables the log volume histogram even when users write raw SQL.
+   */
+  private _getLogsVolumeFromOtelConfig(query: CHQuery): CHQuery | undefined {
+    const logsOtelVersion = this.getLogsOtelVersion();
+    const otelConfig = logsOtelVersion ? otel.getVersion(logsOtelVersion) : undefined;
+    if (!otelConfig) {
+      return undefined;
+    }
+
+    const database = this.getDefaultLogsDatabase() || this.getDefaultDatabase();
+    const table = this.getDefaultLogsTable();
+    if (!table) {
+      return undefined;
+    }
+
+    const timeColumnName = otelConfig.logColumnMap.get(ColumnHint.FilterTime) || otelConfig.logColumnMap.get(ColumnHint.Time);
+    const levelColumnName = otelConfig.logColumnMap.get(ColumnHint.LogLevel);
+    if (!timeColumnName) {
+      return undefined;
+    }
+
+    const columns: SelectedColumn[] = [{
+      name: timeColumnName,
+      alias: TIME_FIELD_ALIAS,
+      hint: ColumnHint.FilterTime,
+    }];
+
+    const aggregates: AggregateColumn[] = [];
+    if (levelColumnName) {
+      const llf = `toString("${levelColumnName}")`;
+      let level: keyof typeof LOG_LEVEL_TO_IN_CLAUSE;
+      for (level in LOG_LEVEL_TO_IN_CLAUSE) {
+        aggregates.push({
+          aggregateType: AggregateType.Sum,
+          column: `multiSearchAny(${llf}, [${LOG_LEVEL_TO_IN_CLAUSE[level]}])`,
+          alias: level,
+        });
+      }
+    } else {
+      aggregates.push({ aggregateType: AggregateType.Count, column: '*', alias: DEFAULT_LOGS_ALIAS });
+    }
+
+    const builderOptions: QueryBuilderOptions = {
+      database,
+      table,
+      queryType: QueryType.TimeSeries,
+      filters: [{
+        operator: FilterOperator.WithInGrafanaTimeRange,
+        filterType: 'custom',
+        hint: ColumnHint.FilterTime,
+        key: '',
+        type: 'datetime',
+        condition: 'AND',
+      }],
+      columns,
+      aggregates,
+      orderBy: [{ name: '', hint: ColumnHint.FilterTime, dir: OrderByDirection.ASC }],
+    };
+
+    return {
+      pluginVersion,
+      editorType: EditorType.Builder,
+      builderOptions,
+      rawSql: generateSql(builderOptions),
+      refId: `${query.refId}-volume`,
       hide: true,
     };
   }
@@ -1745,8 +1826,11 @@ export class Datasource
       throw new Error('Missing query for log context');
     } else if (!options || !options.direction || options.limit === undefined) {
       throw new Error('Missing log context options for query');
-    } else if (query.editorType === EditorType.SQL || !query.builderOptions) {
-      throw new Error('Log context feature only works for builder queries');
+    }
+
+    // T3.2: Support SQL mode by generating a context query from OTEL config
+    if (query.editorType === EditorType.SQL || !query.builderOptions) {
+      return this._getLogRowContextFromOtelConfig(row, options);
     }
 
     const contextQuery = cloneDeep(query);
@@ -1796,6 +1880,90 @@ export class Datasource
     builderOptions.filters.push(...contextColumnFilters);
 
     contextQuery.rawSql = generateSql(builderOptions);
+    const req = {
+      targets: [contextQuery],
+    } as DataQueryRequest<CHQuery>;
+
+    return await firstValueFrom(this.query(req));
+  }
+
+  /**
+   * T3.2: Generate log context for SQL mode queries using OTEL config.
+   * When user writes raw SQL but has OTEL configured, we can still show context
+   * by generating a builder-mode query from the OTEL column mappings.
+   */
+  private async _getLogRowContextFromOtelConfig(
+    row: LogRowModel,
+    options: LogRowContextOptions
+  ): Promise<DataQueryResponse> {
+    const logsOtelVersion = this.getLogsOtelVersion();
+    const otelConfig = logsOtelVersion ? otel.getVersion(logsOtelVersion) : undefined;
+
+    if (!otelConfig) {
+      throw new Error('Log context for SQL mode requires OTEL configuration. Enable OTEL in datasource settings or use the Query Builder.');
+    }
+
+    const database = this.getDefaultLogsDatabase() || this.getDefaultDatabase();
+    const table = this.getDefaultLogsTable() || '';
+    if (!table) {
+      throw new Error('Log context for SQL mode requires a default logs table in datasource settings.');
+    }
+
+    const columns = Array.from(otelConfig.logColumnMap, ([hint, name]) => ({ name, hint }));
+    const timeColumn = columns.find(c => c.hint === ColumnHint.FilterTime || c.hint === ColumnHint.Time);
+    if (!timeColumn) {
+      throw new Error('Missing time column in OTEL log column mapping');
+    }
+
+    const direction = options.direction === LogRowContextQueryDirection.Forward ? OrderByDirection.ASC : OrderByDirection.DESC;
+    const timeOp = options.direction === LogRowContextQueryDirection.Forward
+      ? FilterOperator.GreaterThanOrEqual
+      : FilterOperator.LessThanOrEqual;
+
+    const contextColumns = this.getLogContextColumnsFromLogRow(row);
+    const contextFilters: Filter[] = contextColumns.map((c) => ({
+      operator: FilterOperator.Equals,
+      filterType: 'custom' as const,
+      key: c.name,
+      value: c.value,
+      type: 'string',
+      condition: 'AND' as const,
+    }));
+
+    const builderOptions: QueryBuilderOptions = {
+      database,
+      table,
+      queryType: QueryType.Logs,
+      mode: BuilderMode.List,
+      columns,
+      filters: [
+        {
+          operator: timeOp,
+          filterType: 'custom',
+          hint: timeColumn.hint!,
+          key: '',
+          value: `fromUnixTimestamp64Nano(${row.timeEpochNs})`,
+          type: 'datetime',
+          condition: 'AND',
+        },
+        ...contextFilters,
+      ],
+      orderBy: [{ name: '', hint: timeColumn.hint!, dir: direction }],
+      limit: options.limit,
+      meta: {
+        otelEnabled: true,
+        otelVersion: logsOtelVersion,
+      },
+    };
+
+    const contextQuery: CHQuery = {
+      refId: '',
+      pluginVersion,
+      editorType: EditorType.Builder,
+      rawSql: generateSql(builderOptions),
+      builderOptions,
+    };
+
     const req = {
       targets: [contextQuery],
     } as DataQueryRequest<CHQuery>;
