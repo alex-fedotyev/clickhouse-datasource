@@ -1,6 +1,5 @@
 {
-  "annotations": { "list": [] },
-  "description": "Explore OpenTelemetry logs stored in ClickHouse. Filter by service, level, or any attribute — no SQL required.",
+  "description": "Explore OpenTelemetry logs in ClickHouse. Click any service or level to filter. Click TraceId to view the trace.",
   "editable": true,
   "graphTooltip": 2,
   "id": null,
@@ -13,39 +12,32 @@
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "scheme", "schemeName": "Oranges" },
-          "custom": {
-            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
-            "scaleDistribution": { "type": "log", "log": 2 }
-          }
+          "custom": { "scaleDistribution": { "type": "log", "log": 2 } }
         }
       },
       "gridPos": { "h": 4, "w": 24, "x": 0, "y": 0 },
       "id": 1,
       "options": {
-        "calculate": false,
-        "cellGap": 1,
-        "color": { "exponent": 0.5, "fill": "dark-orange", "mode": "scheme", "scheme": "Oranges", "steps": 64 },
+        "calculate": false, "cellGap": 1,
+        "color": { "exponent": 0.5, "mode": "scheme", "scheme": "Oranges", "steps": 64 },
         "filterValues": { "le": 0 },
         "showValue": "never",
         "tooltip": { "show": true, "yHistogram": false },
-        "yAxis": { "axisPlacement": "left", "reverse": false }
+        "yAxis": { "axisPlacement": "left" }
       },
       "title": "Log Volume",
       "type": "heatmap",
       "targets": [{
         "datasource": { "type": "grafana-clickhouse-datasource", "uid": "${datasource}" },
         "editorType": "sql",
-        "rawSql": "SELECT\n  toStartOfInterval(Timestamp, INTERVAL $__interval_s second) AS time,\n  SeverityText AS level,\n  count() AS count\nFROM $__database.otel_logs\nWHERE $__timeFilter(Timestamp)\n  AND ($service = '' OR ServiceName = $service)\n  AND ($level_filter = '' OR SeverityText = $level_filter)\n  AND ($search = '' OR hasToken(Body, $search))\n  $__conditionalAll(AND ServiceName IN ($service), $service)\nGROUP BY time, level\nORDER BY time, level",
+        "rawSql": "SELECT toStartOfInterval(Timestamp, INTERVAL $__interval_s second) AS time, SeverityText AS level, count() AS count FROM $__database.otel_logs WHERE $__timeFilter(Timestamp) AND ($service = '' OR ServiceName IN ($service)) AND ($level_filter = '' OR SeverityText IN ($level_filter)) AND ($search = '' OR hasToken(Body, $search)) GROUP BY time, level ORDER BY time, level",
         "refId": "A", "format": 0
       }]
     },
     {
       "datasource": { "type": "grafana-clickhouse-datasource", "uid": "${datasource}" },
       "fieldConfig": {
-        "defaults": {
-          "color": { "mode": "palette-classic" },
-          "custom": { "drawStyle": "bars", "fillOpacity": 80, "lineWidth": 0, "stacking": { "mode": "normal" }, "showPoints": "never" }
-        },
+        "defaults": { "color": { "mode": "palette-classic" }, "custom": { "drawStyle": "bars", "fillOpacity": 80, "lineWidth": 0, "stacking": { "mode": "normal" }, "showPoints": "never" } },
         "overrides": [
           { "matcher": { "id": "byName", "options": "ERROR" }, "properties": [{ "id": "color", "value": { "fixedColor": "#F2495C", "mode": "fixed" } }] },
           { "matcher": { "id": "byName", "options": "WARN" }, "properties": [{ "id": "color", "value": { "fixedColor": "#FF9830", "mode": "fixed" } }] },
@@ -63,36 +55,26 @@
       "targets": [{
         "datasource": { "type": "grafana-clickhouse-datasource", "uid": "${datasource}" },
         "editorType": "sql",
-        "rawSql": "SELECT\n  toStartOfInterval(Timestamp, INTERVAL $__interval_s second) AS time,\n  SeverityText AS metric,\n  count() AS count\nFROM $__database.otel_logs\nWHERE $__timeFilter(Timestamp)\n  AND ($service = '' OR ServiceName = $service)\n  AND ($level_filter = '' OR SeverityText = $level_filter)\n  AND ($search = '' OR hasToken(Body, $search))\nGROUP BY time, metric\nORDER BY time",
+        "rawSql": "SELECT toStartOfInterval(Timestamp, INTERVAL $__interval_s second) AS time, SeverityText AS metric, count() AS count FROM $__database.otel_logs WHERE $__timeFilter(Timestamp) AND ($service = '' OR ServiceName IN ($service)) AND ($level_filter = '' OR SeverityText IN ($level_filter)) AND ($search = '' OR hasToken(Body, $search)) GROUP BY time, metric ORDER BY time",
         "refId": "A", "format": 0
       }]
     },
     {
       "datasource": { "type": "grafana-clickhouse-datasource", "uid": "${datasource}" },
       "fieldConfig": {
-        "defaults": {
-          "color": { "mode": "palette-classic" },
-          "custom": { "align": "auto" },
-          "mappings": [],
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] }
-        }
+        "defaults": { "color": { "mode": "palette-classic" }, "links": [
+          { "title": "Filter to ${__data.fields.Service}", "url": "/d/otel-logs-explorer?var-service=${__data.fields.Service}&${__url_time_range}&var-datasource=${datasource}&var-level_filter=${level_filter}&var-search=${search}" }
+        ] }
       },
       "gridPos": { "h": 5, "w": 8, "x": 16, "y": 4 },
       "id": 3,
-      "options": {
-        "colorMode": "background",
-        "graphMode": "none",
-        "justifyMode": "auto",
-        "orientation": "horizontal",
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
-        "textMode": "auto"
-      },
-      "title": "Services",
+      "options": { "colorMode": "background", "graphMode": "none", "orientation": "horizontal", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
+      "title": "Services (click to filter)",
       "type": "bargauge",
       "targets": [{
         "datasource": { "type": "grafana-clickhouse-datasource", "uid": "${datasource}" },
         "editorType": "sql",
-        "rawSql": "SELECT\n  ServiceName AS Service,\n  count() AS Count\nFROM $__database.otel_logs\nWHERE $__timeFilter(Timestamp)\n  AND ($service = '' OR ServiceName = $service)\n  AND ($level_filter = '' OR SeverityText = $level_filter)\n  AND ($search = '' OR hasToken(Body, $search))\nGROUP BY Service\nORDER BY Count DESC\nLIMIT 15",
+        "rawSql": "SELECT ServiceName AS Service, count() AS Count FROM $__database.otel_logs WHERE $__timeFilter(Timestamp) AND ($service = '' OR ServiceName IN ($service)) AND ($level_filter = '' OR SeverityText IN ($level_filter)) AND ($search = '' OR hasToken(Body, $search)) GROUP BY Service ORDER BY Count DESC LIMIT 15",
         "refId": "A", "format": 1
       }]
     },
@@ -100,22 +82,13 @@
       "datasource": { "type": "grafana-clickhouse-datasource", "uid": "${datasource}" },
       "gridPos": { "h": 16, "w": 24, "x": 0, "y": 9 },
       "id": 4,
-      "options": {
-        "showTime": true,
-        "showLabels": true,
-        "showCommonLabels": false,
-        "wrapLogMessage": true,
-        "prettifyLogMessage": false,
-        "enableLogDetails": true,
-        "dedupStrategy": "none",
-        "sortOrder": "Descending"
-      },
+      "options": { "showTime": true, "showLabels": true, "showCommonLabels": false, "wrapLogMessage": true, "prettifyLogMessage": false, "enableLogDetails": true, "dedupStrategy": "none", "sortOrder": "Descending" },
       "title": "Logs",
       "type": "logs",
       "targets": [{
         "datasource": { "type": "grafana-clickhouse-datasource", "uid": "${datasource}" },
         "editorType": "sql",
-        "rawSql": "SELECT\n  Timestamp AS timestamp,\n  Body AS body,\n  SeverityText AS level,\n  ServiceName,\n  TraceId,\n  SpanId,\n  ResourceAttributes['service.namespace'] AS namespace,\n  ResourceAttributes['k8s.namespace.name'] AS k8s_namespace,\n  ResourceAttributes['k8s.pod.name'] AS k8s_pod,\n  ResourceAttributes['k8s.container.name'] AS k8s_container,\n  ResourceAttributes['k8s.deployment.name'] AS k8s_deployment\nFROM $__database.otel_logs\nWHERE $__timeFilter(Timestamp)\n  AND ($service = '' OR ServiceName = $service)\n  AND ($level_filter = '' OR SeverityText = $level_filter)\n  AND ($search = '' OR hasToken(Body, $search))\nORDER BY Timestamp DESC\nLIMIT 500",
+        "rawSql": "SELECT Timestamp AS timestamp, Body AS body, SeverityText AS level, ServiceName, TraceId, SpanId, ResourceAttributes['service.namespace'] AS namespace, ResourceAttributes['k8s.namespace.name'] AS k8s_namespace, ResourceAttributes['k8s.pod.name'] AS k8s_pod, ResourceAttributes['k8s.container.name'] AS k8s_container, ResourceAttributes['k8s.deployment.name'] AS k8s_deployment FROM $__database.otel_logs WHERE $__timeFilter(Timestamp) AND ($service = '' OR ServiceName IN ($service)) AND ($level_filter = '' OR SeverityText IN ($level_filter)) AND ($search = '' OR hasToken(Body, $search)) ORDER BY Timestamp DESC LIMIT 500",
         "refId": "A", "format": 2
       }]
     }
@@ -125,10 +98,7 @@
   "tags": ["clickhouse", "otel", "logs"],
   "templating": {
     "list": [
-      {
-        "current": {}, "hide": 0, "label": "Data Source", "name": "datasource",
-        "query": "grafana-clickhouse-datasource", "refresh": 1, "type": "datasource"
-      },
+      { "current": {}, "hide": 0, "label": "Data Source", "name": "datasource", "query": "grafana-clickhouse-datasource", "refresh": 1, "type": "datasource" },
       {
         "datasource": { "type": "grafana-clickhouse-datasource", "uid": "${datasource}" },
         "hide": 0, "includeAll": true, "label": "Service", "multi": true, "name": "service",
@@ -150,9 +120,5 @@
     ]
   },
   "time": { "from": "now-1h", "to": "now" },
-  "timepicker": {},
-  "timezone": "",
-  "title": "OTel Logs Explorer",
-  "uid": "otel-logs-explorer",
-  "version": 1
+  "timezone": "", "title": "OTel Logs Explorer", "uid": "otel-logs-explorer", "version": 1
 }
