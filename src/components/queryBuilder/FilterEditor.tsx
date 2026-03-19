@@ -7,6 +7,7 @@ import labels from 'labels';
 import { styles } from 'styles';
 import { Datasource } from 'data/CHDatasource';
 import useUniqueMapKeys from 'hooks/useUniqueMapKeys';
+import { FilterTagBar } from './FilterTagBar';
 
 const boolValues: Array<SelectableValue<boolean>> = [
   { value: true, label: 'True' },
@@ -442,6 +443,7 @@ export const FiltersEditor = (props: {
 
   return (
     <>
+      <FilterTagBar filters={filters} onRemoveFilter={removeFilter} />
       {filters.length === 0 && (
         <div className="gf-form">
           <InlineFormLabel width={8} className="query-keyword" tooltip={tooltip}>

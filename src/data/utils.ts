@@ -1,4 +1,4 @@
-import { CoreApp, DataFrame, DataQueryRequest, DataQueryResponse, FieldConfig } from '@grafana/data';
+import { CoreApp, DataFrame, DataFrameType, DataQueryRequest, DataQueryResponse, FieldConfig, FieldType, MutableDataFrame, NodeGraphDataFrameFieldNames } from '@grafana/data';
 import {
   ColumnHint,
   FilterOperator,
@@ -260,6 +260,234 @@ export const applyFieldConfigs = (req: DataQueryRequest<CHQuery>, res: DataQuery
 export const applyTraceSearchFieldConfig = applyFieldConfigs;
 
 /**
+ * T-NEW: Enriches response frames with Grafana metadata for optimal visualization.
+ * Sets DataFrameType, preferredVisualisationType, executedQueryString, and query stats.
+ * Also generates supplementary frames (status bar chart for traces, etc.)
+ */
+const enrichResponseMetadata = (
+  req: DataQueryRequest<CHQuery>,
+  res: DataQueryResponse
+): DataQueryResponse => {
+  const additionalFrames: DataFrame[] = [];
+
+  res.data.forEach((frame: DataFrame) => {
+    const originalQuery = req.targets.find((t) => t.refId === frame.refId) as CHBuilderQuery;
+    if (!originalQuery) {
+      return;
+    }
+
+    // Initialize meta if not present
+    if (!frame.meta) {
+      frame.meta = {};
+    }
+
+    // Show executed SQL in Query Inspector (T6.1 frontend part)
+    if (originalQuery.rawSql && !frame.meta.executedQueryString) {
+      frame.meta.executedQueryString = originalQuery.rawSql;
+    }
+
+    // Set DataFrameType and preferredVisualisationType based on query type
+    if (originalQuery.editorType === EditorType.Builder) {
+      const queryType = originalQuery.builderOptions?.queryType;
+      const isTraceIdMode = originalQuery.builderOptions?.meta?.isTraceIdMode;
+
+      if (queryType === QueryType.Logs) {
+        frame.meta.type = DataFrameType.LogLines;
+        frame.meta.preferredVisualisationType = 'logs';
+      } else if (queryType === QueryType.Traces && isTraceIdMode) {
+        frame.meta.preferredVisualisationType = 'trace';
+      } else if (queryType === QueryType.Traces && !isTraceIdMode) {
+        frame.meta.preferredVisualisationType = 'table';
+
+        // Generate a supplementary status breakdown bar chart frame for Explore
+        if (frame.fields.length > 0) {
+          const statusFrame = generateTraceStatusFrame(frame, originalQuery.refId);
+          if (statusFrame) {
+            additionalFrames.push(statusFrame);
+          }
+        }
+      } else if (queryType === QueryType.TimeSeries) {
+        frame.meta.type = DataFrameType.TimeSeriesWide;
+        frame.meta.preferredVisualisationType = 'graph';
+      }
+    }
+  });
+
+  // Append supplementary frames
+  if (additionalFrames.length > 0) {
+    res.data = [...res.data, ...additionalFrames];
+  }
+
+  return res;
+};
+
+/**
+ * Generates a supplementary bar chart frame showing trace status breakdown.
+ * Returned alongside trace search results in Explore to show error distribution.
+ */
+const generateTraceStatusFrame = (searchFrame: DataFrame, refId: string): DataFrame | null => {
+  const statusField = searchFrame.fields.find(
+    (f) => f.name.toLowerCase() === 'status' || f.name.toLowerCase() === 'statuscode'
+  );
+  if (!statusField || !statusField.values || statusField.values.length === 0) {
+    return null;
+  }
+
+  // Count status occurrences
+  const counts: Record<string, number> = {};
+  for (let i = 0; i < statusField.values.length; i++) {
+    const val = String(statusField.values[i] || 'OK');
+    const label = val === 'STATUS_CODE_ERROR' ? 'Error' :
+                  val === 'STATUS_CODE_OK' ? 'OK' :
+                  val === 'STATUS_CODE_UNSET' ? 'Unset' :
+                  val === '' ? 'OK' : val;
+    counts[label] = (counts[label] || 0) + 1;
+  }
+
+  if (Object.keys(counts).length === 0) {
+    return null;
+  }
+
+  const statusLabels = Object.keys(counts);
+  const statusValues = Object.values(counts);
+
+  const frame: DataFrame = {
+    name: 'Trace Status',
+    refId: `${refId}-status`,
+    fields: [
+      {
+        name: 'Status',
+        type: FieldType.string,
+        values: statusLabels,
+        config: {},
+      },
+      {
+        name: 'Count',
+        type: FieldType.number,
+        values: statusValues,
+        config: {
+          color: {
+            mode: 'fixed',
+            fixedColor: 'green',
+          },
+        },
+      },
+    ],
+    length: statusLabels.length,
+    meta: {
+      preferredVisualisationType: 'graph',
+      custom: { resultType: 'status-breakdown' },
+    },
+  };
+
+  // Color the error bar red
+  const errorIdx = statusLabels.indexOf('Error');
+  if (errorIdx >= 0) {
+    frame.fields[1].config = {
+      ...frame.fields[1].config,
+      custom: {
+        fillOpacity: 80,
+      },
+    };
+  }
+
+  return frame;
+};
+
+/**
+ * Generates Node Graph frames (Nodes + Edges) from trace data for service map visualization.
+ * This is T2.1 — service map via Node Graph panel.
+ * Called when trace search results contain ServiceName data.
+ */
+export const generateServiceMapFrames = (
+  traceSearchFrame: DataFrame,
+  refId: string
+): DataFrame[] => {
+  const serviceField = traceSearchFrame.fields.find(
+    (f) => f.name.toLowerCase() === 'servicename' || f.name.toLowerCase() === 'service'
+  );
+  const statusField = traceSearchFrame.fields.find(
+    (f) => f.name.toLowerCase() === 'status' || f.name.toLowerCase() === 'statuscode'
+  );
+  const durationField = traceSearchFrame.fields.find(
+    (f) => f.name.toLowerCase() === 'duration'
+  );
+
+  if (!serviceField || !serviceField.values || serviceField.values.length === 0) {
+    return [];
+  }
+
+  // Aggregate per-service stats
+  const serviceStats: Record<string, { count: number; errors: number; totalDuration: number }> = {};
+  for (let i = 0; i < serviceField.values.length; i++) {
+    const svc = String(serviceField.values[i] || 'unknown');
+    if (!serviceStats[svc]) {
+      serviceStats[svc] = { count: 0, errors: 0, totalDuration: 0 };
+    }
+    serviceStats[svc].count++;
+    if (statusField?.values?.[i] === 'STATUS_CODE_ERROR' || statusField?.values?.[i] === 'Error') {
+      serviceStats[svc].errors++;
+    }
+    if (durationField?.values?.[i]) {
+      serviceStats[svc].totalDuration += Number(durationField.values[i]);
+    }
+  }
+
+  const services = Object.keys(serviceStats);
+  if (services.length === 0) {
+    return [];
+  }
+
+  // Build Nodes frame
+  const nodesFrame: DataFrame = {
+    name: 'nodes',
+    refId: `${refId}-nodes`,
+    fields: [
+      { name: NodeGraphDataFrameFieldNames.id, type: FieldType.string, values: services, config: {} },
+      { name: NodeGraphDataFrameFieldNames.title, type: FieldType.string, values: services, config: {} },
+      {
+        name: NodeGraphDataFrameFieldNames.mainStat,
+        type: FieldType.string,
+        values: services.map((s) => `${serviceStats[s].count} req`),
+        config: {},
+      },
+      {
+        name: NodeGraphDataFrameFieldNames.secondaryStat,
+        type: FieldType.string,
+        values: services.map((s) => {
+          const avg = serviceStats[s].totalDuration / serviceStats[s].count / 1000000;
+          return `${avg.toFixed(1)} ms avg`;
+        }),
+        config: {},
+      },
+      {
+        name: 'arc__success',
+        type: FieldType.number,
+        values: services.map((s) => {
+          const stats = serviceStats[s];
+          return stats.count > 0 ? (stats.count - stats.errors) / stats.count : 1;
+        }),
+        config: { color: { mode: 'fixed', fixedColor: 'green' } },
+      },
+      {
+        name: 'arc__errors',
+        type: FieldType.number,
+        values: services.map((s) => {
+          const stats = serviceStats[s];
+          return stats.count > 0 ? stats.errors / stats.count : 0;
+        }),
+        config: { color: { mode: 'fixed', fixedColor: 'red' } },
+      },
+    ],
+    length: services.length,
+    meta: { preferredVisualisationType: 'nodeGraph' },
+  };
+
+  // For a basic service map we return just nodes (edges require peer.service attribute data)
+  return [nodesFrame];
+};
+
+/**
  * Mutates the DataQueryResponse to include trace/log links on the traceID field.
  * The link will open a second query editor in split view
  * on the explore page with the selected trace ID.
@@ -272,6 +500,7 @@ export const transformQueryResponseWithTraceAndLogLinks = (
   res: DataQueryResponse
 ): DataQueryResponse => {
   applyTraceSearchFieldConfig(req, res);
+  enrichResponseMetadata(req, res);
 
   res.data.forEach((frame: DataFrame) => {
     const originalQuery = req.targets.find((t) => t.refId === frame.refId) as CHBuilderQuery;

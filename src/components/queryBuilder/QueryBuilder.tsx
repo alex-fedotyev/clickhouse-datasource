@@ -10,6 +10,7 @@ import { DatabaseTableSelect } from 'components/queryBuilder/DatabaseTableSelect
 import { QueryTypeSwitcher } from 'components/queryBuilder/QueryTypeSwitcher';
 import { styles } from 'styles';
 import { TraceQueryBuilder } from './views/TraceQueryBuilder';
+import { QueryStarter } from './QueryStarter';
 import {
   BuilderOptionsReducerAction,
   setBuilderMinimized,
@@ -44,6 +45,25 @@ export const QueryBuilder = (props: QueryBuilderProps) => {
         builderOptionsDispatch={builderOptionsDispatch}
         datasource={datasource}
       />
+    );
+  }
+
+  // T4.1: Show the "What do you want to query?" landing page when no table is selected
+  const showStarter = !builderOptions.table;
+  if (showStarter) {
+    return (
+      <div data-testid="query-editor-section-builder">
+        <div className={'gf-form ' + styles.QueryEditor.queryType}>
+          <DatabaseTableSelect
+            datasource={datasource}
+            database={builderOptions.database}
+            onDatabaseChange={onDatabaseChange}
+            table={builderOptions.table}
+            onTableChange={onTableChange}
+          />
+        </div>
+        <QueryStarter datasource={datasource} builderOptionsDispatch={builderOptionsDispatch} />
+      </div>
     );
   }
 
