@@ -35,6 +35,26 @@
       "type": "dashboard",
       "name": "ClickHouse System Dashboards",
       "path": "dashboards/system-dashboards.json"
+    },
+    {
+      "type": "dashboard",
+      "name": "OTel Logs Explorer",
+      "path": "dashboards/otel-logs-explorer.json"
+    },
+    {
+      "type": "dashboard",
+      "name": "OTel Traces Explorer",
+      "path": "dashboards/otel-traces-explorer.json"
+    },
+    {
+      "type": "dashboard",
+      "name": "OTel Service Overview (RED Metrics)",
+      "path": "dashboards/otel-red-metrics.json"
+    },
+    {
+      "type": "dashboard",
+      "name": "Cross-Signal Correlation",
+      "path": "dashboards/otel-cross-signal.json"
     }
   ],
   "category": "sql",

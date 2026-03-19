@@ -396,7 +396,21 @@ const generateLogsQuery = (_options: QueryBuilderOptions): string => {
       queryParts.push('AND');
     }
 
-    queryParts.push(`(${logMessage.alias || logMessage.name} LIKE '%${options.meta!.logMessageLike}%')`);
+    const searchTerm = options.meta!.logMessageLike!;
+    const colRef = logMessage.alias || logMessage.name;
+
+    // T3.4: Use hasToken() for single-word tokens (dramatically faster with tokenbf_v1 index).
+    // Fall back to LIKE for multi-word or pattern searches.
+    const isSingleToken = /^[a-zA-Z0-9_]+$/.test(searchTerm);
+    if (isSingleToken) {
+      queryParts.push(`(hasToken(${colRef}, '${searchTerm}'))`);
+    } else if (searchTerm.includes(' ')) {
+      // Multiple search terms: use multiSearchAny for better performance
+      const terms = searchTerm.split(/\s+/).filter(Boolean).map(t => `'${t}'`).join(', ');
+      queryParts.push(`(multiSearchAny(${colRef}, [${terms}]))`);
+    } else {
+      queryParts.push(`(${colRef} LIKE '%${searchTerm}%')`);
+    }
   }
 
   const hintsToGroup = new Set([ColumnHint.FilterTime, ColumnHint.Time]);

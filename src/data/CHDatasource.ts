@@ -6,8 +6,10 @@ import {
   DataQueryResponse,
   DataSourceInstanceSettings,
   DataSourceWithLogsContextSupport,
+  DataSourceWithLogsLabelTypesSupport,
   DataSourceWithQueryModificationSupport,
   DataSourceWithSupplementaryQueriesSupport,
+  DataSourceWithToggleableQueryFiltersSupport,
   Field,
   getTimeZone,
   getTimeZoneInfo,
@@ -15,10 +17,13 @@ import {
   LogRowContextQueryDirection,
   LogRowModel,
   MetricFindValue,
+  QueryFilterOptions,
   QueryFixAction,
+  QueryFixType,
   ScopedVars,
   SupplementaryQueryOptions,
   SupplementaryQueryType,
+  ToggleFilterAction,
   TypedVariableModel,
 } from '@grafana/data';
 import { DataSourceWithBackend, getTemplateSrv } from '@grafana/runtime';
@@ -62,7 +67,9 @@ export class Datasource
   implements
     DataSourceWithSupplementaryQueriesSupport<CHQuery>,
     DataSourceWithLogsContextSupport<CHQuery>,
-    DataSourceWithQueryModificationSupport<CHQuery>
+    DataSourceWithQueryModificationSupport<CHQuery>,
+    DataSourceWithToggleableQueryFiltersSupport<CHQuery>,
+    DataSourceWithLogsLabelTypesSupport
 {
   // This enables default annotation support for 7.2+
   annotations = {};
@@ -280,8 +287,142 @@ export class Datasource
     };
   }
 
-  getSupplementaryQuery(_options: SupplementaryQueryOptions, _originalQuery: CHQuery): CHQuery | undefined {
+  /**
+   * T1.5: Returns a supplementary query for Grafana to manage.
+   * Replaces the deprecated getDataProvider() Observable pipeline with the modern
+   * getSupplementaryQuery() approach where Grafana manages the query lifecycle.
+   * Also adds LogsSample support (T3.1) — when running an aggregation query on logs,
+   * returns sample log lines matching the same filters.
+   */
+  getSupplementaryQuery(options: SupplementaryQueryOptions, originalQuery: CHQuery): CHQuery | undefined {
+    if (options.type === SupplementaryQueryType.LogsVolume) {
+      return this._getLogsVolumeSupplementaryQuery(originalQuery);
+    }
+
+    if (options.type === SupplementaryQueryType.LogsSample) {
+      return this._getLogsSampleSupplementaryQuery(originalQuery);
+    }
+
     return undefined;
+  }
+
+  /**
+   * T1.5: Generates a logs volume supplementary query from the original log query.
+   * This replaces the custom Observable pipeline in getDataProvider() with a query object
+   * that Grafana manages directly.
+   */
+  private _getLogsVolumeSupplementaryQuery(query: CHQuery): CHQuery | undefined {
+    if (
+      query.editorType !== EditorType.Builder ||
+      query.builderOptions.queryType !== QueryType.Logs ||
+      query.builderOptions.mode !== BuilderMode.List ||
+      query.builderOptions.database === '' ||
+      query.builderOptions.table === ''
+    ) {
+      return undefined;
+    }
+
+    const timeColumn = getColumnByHint(query.builderOptions, ColumnHint.FilterTime) || getColumnByHint(query.builderOptions, ColumnHint.Time);
+    if (timeColumn === undefined) {
+      return undefined;
+    }
+
+    const columns: SelectedColumn[] = [];
+    const aggregates: AggregateColumn[] = [];
+    columns.push({
+      name: timeColumn.name,
+      alias: TIME_FIELD_ALIAS,
+      hint: timeColumn.hint!,
+    });
+
+    const logLevelColumn = getColumnByHint(query.builderOptions, ColumnHint.LogLevel);
+    if (logLevelColumn) {
+      const llf = `toString("${logLevelColumn.name}")`;
+      let level: keyof typeof LOG_LEVEL_TO_IN_CLAUSE;
+      for (level in LOG_LEVEL_TO_IN_CLAUSE) {
+        aggregates.push({
+          aggregateType: AggregateType.Sum,
+          column: `multiSearchAny(${llf}, [${LOG_LEVEL_TO_IN_CLAUSE[level]}])`,
+          alias: level,
+        });
+      }
+    } else {
+      aggregates.push({
+        aggregateType: AggregateType.Count,
+        column: '*',
+        alias: DEFAULT_LOGS_ALIAS,
+      });
+    }
+
+    const filters = (query.builderOptions.filters?.slice() || []).map((f) => {
+      if (f.hint && !f.key) {
+        const originalColumn = getColumnByHint(query.builderOptions, f.hint);
+        f.key = originalColumn?.alias || originalColumn?.name || '';
+      }
+      return f;
+    });
+
+    const logVolumeSqlBuilderOptions: QueryBuilderOptions = {
+      database: query.builderOptions.database,
+      table: query.builderOptions.table,
+      queryType: QueryType.TimeSeries,
+      filters,
+      columns,
+      aggregates,
+      orderBy: [{ name: '', hint: timeColumn.hint!, dir: OrderByDirection.ASC }],
+    };
+
+    return {
+      pluginVersion,
+      editorType: EditorType.Builder,
+      builderOptions: logVolumeSqlBuilderOptions,
+      rawSql: generateSql(logVolumeSqlBuilderOptions),
+      refId: `${query.refId}-volume`,
+      hide: true,
+    };
+  }
+
+  /**
+   * T3.1: Generates a LogsSample supplementary query.
+   * When running an aggregation query on logs (count errors by service),
+   * this returns sample log lines matching the same filters.
+   */
+  private _getLogsSampleSupplementaryQuery(query: CHQuery): CHQuery | undefined {
+    if (
+      query.editorType !== EditorType.Builder ||
+      query.builderOptions.queryType !== QueryType.Logs ||
+      query.builderOptions.mode !== BuilderMode.Aggregate ||
+      query.builderOptions.database === '' ||
+      query.builderOptions.table === ''
+    ) {
+      return undefined;
+    }
+
+    const timeColumn = getColumnByHint(query.builderOptions, ColumnHint.Time) || getColumnByHint(query.builderOptions, ColumnHint.FilterTime);
+    if (!timeColumn) {
+      return undefined;
+    }
+
+    // Strip aggregation and GROUP BY, keep WHERE filters, add ORDER BY + LIMIT
+    const sampleBuilderOptions: QueryBuilderOptions = {
+      database: query.builderOptions.database,
+      table: query.builderOptions.table,
+      queryType: QueryType.Logs,
+      mode: BuilderMode.List,
+      columns: query.builderOptions.columns?.filter(c => !c.hint || c.hint !== ColumnHint.FilterTime) || [],
+      filters: query.builderOptions.filters?.slice() || [],
+      orderBy: [{ name: '', hint: timeColumn.hint!, dir: OrderByDirection.DESC }],
+      limit: 10,
+    };
+
+    return {
+      pluginVersion,
+      editorType: EditorType.Builder,
+      builderOptions: sampleBuilderOptions,
+      rawSql: generateSql(sampleBuilderOptions),
+      refId: `${query.refId}-sample`,
+      hide: true,
+    };
   }
 
   async metricFindQuery(query: CHQuery | string, options: any) {
@@ -398,7 +539,12 @@ export class Datasource
 
   // Support filtering by field value in Explore
   modifyQuery(query: CHQuery, action: QueryFixAction): CHQuery {
-    if (query.editorType !== EditorType.Builder || !action.options || !action.options.value) {
+    // Handle string filters (text selection in Explore logs body)
+    if (action.type === 'ADD_STRING_FILTER' || action.type === 'ADD_STRING_FILTER_OUT') {
+      return this._modifyQueryWithStringFilter(query, action);
+    }
+
+    if (query.editorType !== EditorType.Builder || !action.options || !action.options.key || !action.options.value) {
       return query;
     }
 
@@ -533,6 +679,167 @@ export class Datasource
       rawSql: generateSql(nextOptions),
       builderOptions: nextOptions,
     };
+  }
+
+  /**
+   * T1.1: Returns the list of query modification actions this datasource supports.
+   * Enables text selection filtering in Explore logs (select text → "Filter for value" / "Filter out value").
+   */
+  getSupportedQueryModifications(): QueryFixType[] {
+    return ['ADD_FILTER', 'ADD_FILTER_OUT', 'ADD_STRING_FILTER', 'ADD_STRING_FILTER_OUT'];
+  }
+
+  /**
+   * T1.1: Handles ADD_STRING_FILTER / ADD_STRING_FILTER_OUT from text selection in Explore logs.
+   * Adds a LIKE/NOT LIKE filter on the log body column for the selected text.
+   */
+  private _modifyQueryWithStringFilter(query: CHQuery, action: QueryFixAction): CHQuery {
+    if (query.editorType !== EditorType.Builder) {
+      return query;
+    }
+
+    const searchText = action.options?.value || '';
+    if (!searchText) {
+      return query;
+    }
+
+    // Find the log message column
+    const bodyColumn = getColumnByHint(query.builderOptions, ColumnHint.LogMessage);
+    const columnName = bodyColumn?.name || 'Body';
+
+    const isExclude = action.type === 'ADD_STRING_FILTER_OUT';
+    const nextFilters: Filter[] = query.builderOptions.filters?.slice() || [];
+
+    nextFilters.push({
+      condition: 'AND',
+      key: bodyColumn?.hint ? '' : columnName,
+      hint: bodyColumn?.hint,
+      type: 'String',
+      filterType: 'custom',
+      operator: isExclude ? FilterOperator.NotLike : FilterOperator.Like,
+      value: `%${searchText}%`,
+    });
+
+    const nextOptions = { ...query.builderOptions, filters: nextFilters };
+    return {
+      ...query,
+      rawSql: generateSql(nextOptions),
+      builderOptions: nextOptions,
+    };
+  }
+
+  /**
+   * T1.2: Toggles a filter on/off in the query.
+   * If the filter is already present with the same value, removes it.
+   * If the opposite filter is present, replaces it.
+   */
+  toggleQueryFilter(query: CHQuery, filter: ToggleFilterAction): CHQuery {
+    if (query.editorType !== EditorType.Builder) {
+      return query;
+    }
+
+    const { key, value } = filter.options;
+    const isFilterOut = filter.type === 'FILTER_OUT';
+    const targetOperator = isFilterOut ? FilterOperator.NotEquals : FilterOperator.Equals;
+    const oppositeOperator = isFilterOut ? FilterOperator.Equals : FilterOperator.NotEquals;
+
+    let nextFilters: Filter[] = query.builderOptions.filters?.slice() || [];
+
+    // Check if this exact filter already exists → remove it (toggle off)
+    const existingIndex = nextFilters.findIndex(
+      (f) => f.key === key && 'value' in f && f.value === value && f.operator === targetOperator
+    );
+    if (existingIndex >= 0) {
+      nextFilters.splice(existingIndex, 1);
+    } else {
+      // Remove opposite filter if present, then add the new one
+      nextFilters = nextFilters.filter(
+        (f) => !(f.key === key && 'value' in f && f.value === value && f.operator === oppositeOperator)
+      );
+
+      // Also resolve column hints from OTel attribute names
+      let columnName = key;
+      let mapKey = '';
+      if (['ResourceAttributes', 'ScopeAttributes', 'LogAttributes'].includes(key.split('.')[0])) {
+        const prefixIndex = key.indexOf('.');
+        mapKey = key.substring(prefixIndex + 1);
+        columnName = key.substring(0, prefixIndex);
+      }
+
+      const lookupByName = query.builderOptions.columns?.find((c) => c.name === columnName);
+      const lookupByLogsAlias = logAliasToColumnHints.has(key)
+        ? getColumnByHint(query.builderOptions, logAliasToColumnHints.get(key)!)
+        : undefined;
+      const column = lookupByName || lookupByLogsAlias;
+      const columnType = column ? column.type || '' : '';
+      const hasMapKey = mapKey !== '';
+
+      nextFilters.push({
+        condition: 'AND',
+        key: column && column.hint ? '' : (hasMapKey ? columnName : key),
+        hint: column && column.hint ? column.hint : undefined,
+        mapKey: hasMapKey ? mapKey : undefined,
+        type: hasMapKey ? (columnType.startsWith('Map') ? 'Map(String, String)' : 'JSON') : 'String',
+        filterType: 'custom',
+        operator: targetOperator,
+        value,
+      });
+    }
+
+    const nextOptions = { ...query.builderOptions, filters: nextFilters };
+    return {
+      ...query,
+      rawSql: generateSql(nextOptions),
+      builderOptions: nextOptions,
+    };
+  }
+
+  /**
+   * T1.2: Checks if a query already has a specific filter applied.
+   * Used by Grafana to show active filter indicators (+/- buttons) in log details.
+   */
+  queryHasFilter(query: CHQuery, filter: QueryFilterOptions): boolean {
+    if (query.editorType !== EditorType.Builder || !query.builderOptions.filters) {
+      return false;
+    }
+
+    const { key, value } = filter;
+    return query.builderOptions.filters.some(
+      (f) =>
+        ((f.key === key) || (f.hint && logAliasToColumnHints.has(key) && f.hint === logAliasToColumnHints.get(key))) &&
+        'value' in f &&
+        f.value === value &&
+        (f.operator === FilterOperator.Equals || f.operator === FilterOperator.NotEquals)
+    );
+  }
+
+  /**
+   * T1.3: Returns the display type/category for a label in the logs detail panel.
+   * Groups fields into "Resource Attributes", "Log Attributes", "Scope Attributes", etc.
+   * instead of showing a flat list.
+   */
+  getLabelDisplayTypeFromFrame(labelKey: string, _frame: DataFrame | undefined, _index: number | null): string | null {
+    // Map OTEL attribute prefixes to display categories
+    if (labelKey.startsWith('ResourceAttributes.') || labelKey.startsWith('resource.')) {
+      return 'Resource Attributes';
+    }
+    if (labelKey.startsWith('LogAttributes.') || labelKey.startsWith('log.')) {
+      return 'Log Attributes';
+    }
+    if (labelKey.startsWith('ScopeAttributes.') || labelKey.startsWith('scope.')) {
+      return 'Scope Attributes';
+    }
+    if (labelKey.startsWith('SpanAttributes.') || labelKey.startsWith('span.')) {
+      return 'Span Attributes';
+    }
+
+    // Recognize well-known OTEL fields
+    const otelCoreFields = ['TraceId', 'SpanId', 'TraceFlags', 'SeverityText', 'SeverityNumber', 'Body', 'ServiceName'];
+    if (otelCoreFields.includes(labelKey)) {
+      return 'Indexed Columns';
+    }
+
+    return null;
   }
 
   private getMacroArgs(query: string, argsIndex: number): string[] {
