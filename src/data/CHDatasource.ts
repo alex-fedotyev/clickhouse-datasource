@@ -2,6 +2,7 @@ import {
   AbstractLabelOperator,
   AbstractQuery,
   AdHocVariableFilter,
+  AnnotationSupport,
   DataFrame,
   DataFrameView,
   DataQueryRequest,
@@ -77,8 +78,41 @@ export class Datasource
     DataSourceWithQueryExportSupport<CHQuery>,
     DataSourceWithLogsLabelTypesSupport
 {
-  // This enables default annotation support for 7.2+
-  annotations = {};
+  // T1.6: AnnotationSupport with migration and default query
+  annotations: AnnotationSupport<CHQuery> = {
+    prepareAnnotation: (json: any) => {
+      // Migrate old string-based annotation queries to CHQuery format
+      if (json?.rawQuery && !json?.target?.rawSql) {
+        return {
+          ...json,
+          target: {
+            editorType: EditorType.SQL,
+            rawSql: json.rawQuery,
+            refId: 'annotation',
+          },
+        };
+      }
+      return json;
+    },
+    getDefaultQuery: (): Partial<CHQuery> => {
+      return {
+        editorType: EditorType.SQL,
+        rawSql: [
+          'SELECT',
+          '  Timestamp AS time,',
+          '  Body AS text,',
+          "  SeverityText AS tags,",
+          "  ServiceName AS title",
+          'FROM $__database.otel_logs',
+          'WHERE $__timeFilter(Timestamp)',
+          "  AND SeverityText IN ('ERROR', 'FATAL')",
+          'ORDER BY Timestamp',
+          'LIMIT 100',
+        ].join('\n'),
+        refId: 'annotation',
+      };
+    },
+  };
   settings: DataSourceInstanceSettings<CHConfig>;
   adHocFilter: AdHocFilter;
   skipAdHocFilter = false; // don't apply adhoc filters to the query
