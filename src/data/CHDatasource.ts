@@ -1,4 +1,6 @@
 import {
+  AbstractLabelOperator,
+  AbstractQuery,
   AdHocVariableFilter,
   DataFrame,
   DataFrameView,
@@ -7,6 +9,8 @@ import {
   DataSourceInstanceSettings,
   DataSourceWithLogsContextSupport,
   DataSourceWithLogsLabelTypesSupport,
+  DataSourceWithQueryExportSupport,
+  DataSourceWithQueryImportSupport,
   DataSourceWithQueryModificationSupport,
   DataSourceWithSupplementaryQueriesSupport,
   DataSourceWithToggleableQueryFiltersSupport,
@@ -69,6 +73,8 @@ export class Datasource
     DataSourceWithLogsContextSupport<CHQuery>,
     DataSourceWithQueryModificationSupport<CHQuery>,
     DataSourceWithToggleableQueryFiltersSupport<CHQuery>,
+    DataSourceWithQueryImportSupport<CHQuery>,
+    DataSourceWithQueryExportSupport<CHQuery>,
     DataSourceWithLogsLabelTypesSupport
 {
   // This enables default annotation support for 7.2+
@@ -840,6 +846,167 @@ export class Datasource
     }
 
     return null;
+  }
+
+  /**
+   * T1.8: Import queries from other datasources (Loki, Elasticsearch, Prometheus).
+   * When switching from another datasource to ClickHouse in Explore, filters are preserved.
+   * E.g., Loki {service="web"} → ClickHouse WHERE ServiceName = 'web'
+   */
+  async importFromAbstractQueries(abstractQueries: AbstractQuery[]): Promise<CHQuery[]> {
+    const logsOtelVersion = this.getLogsOtelVersion();
+    const otelConfig = logsOtelVersion ? otel.getVersion(logsOtelVersion) : undefined;
+
+    return abstractQueries.map((abstractQuery) => {
+      const filters: Filter[] = abstractQuery.labelMatchers.map((matcher) => {
+        let operator: FilterOperator;
+        switch (matcher.operator) {
+          case AbstractLabelOperator.Equal:
+            operator = FilterOperator.Equals;
+            break;
+          case AbstractLabelOperator.NotEqual:
+            operator = FilterOperator.NotEquals;
+            break;
+          case AbstractLabelOperator.EqualRegEx:
+            operator = FilterOperator.Like;
+            break;
+          case AbstractLabelOperator.NotEqualRegEx:
+            operator = FilterOperator.NotLike;
+            break;
+          default:
+            operator = FilterOperator.Equals;
+        }
+
+        // Map well-known label names to OTEL column names
+        const columnName = this._mapLabelToOtelColumn(matcher.name);
+
+        return {
+          condition: 'AND' as const,
+          key: columnName,
+          type: 'String',
+          filterType: 'custom' as const,
+          operator,
+          value: matcher.operator === AbstractLabelOperator.EqualRegEx ||
+                 matcher.operator === AbstractLabelOperator.NotEqualRegEx
+            ? `%${matcher.value}%`
+            : matcher.value,
+        };
+      });
+
+      const defaultDb = this.getDefaultLogsDatabase() || this.getDefaultDatabase();
+      const defaultTable = this.getDefaultLogsTable() || '';
+      const columns = otelConfig?.logColumnMap
+        ? Array.from(otelConfig.logColumnMap, ([hint, name]) => ({ name, hint }))
+        : [];
+
+      const builderOptions: QueryBuilderOptions = {
+        database: defaultDb,
+        table: defaultTable,
+        queryType: QueryType.Logs,
+        mode: BuilderMode.List,
+        columns,
+        filters,
+        meta: {
+          otelEnabled: Boolean(logsOtelVersion),
+          otelVersion: logsOtelVersion || undefined,
+        },
+      };
+
+      return {
+        refId: abstractQuery.refId,
+        pluginVersion,
+        editorType: EditorType.Builder,
+        rawSql: generateSql(builderOptions),
+        builderOptions,
+      };
+    });
+  }
+
+  /**
+   * T1.8: Export queries to abstract format for other datasources.
+   * Extracts filters from ClickHouse queries into label matchers.
+   */
+  async exportToAbstractQueries(queries: CHQuery[]): Promise<AbstractQuery[]> {
+    return queries.map((query) => {
+      const labelMatchers: Array<{ name: string; value: string; operator: AbstractLabelOperator }> = [];
+
+      if (query.editorType === EditorType.Builder && query.builderOptions?.filters) {
+        for (const filter of query.builderOptions.filters) {
+          if (!filter.key && !filter.hint) continue;
+          if (filter.operator === FilterOperator.IsAnything) continue;
+
+          let operator: AbstractLabelOperator;
+          switch (filter.operator) {
+            case FilterOperator.Equals:
+              operator = AbstractLabelOperator.Equal;
+              break;
+            case FilterOperator.NotEquals:
+              operator = AbstractLabelOperator.NotEqual;
+              break;
+            case FilterOperator.Like:
+              operator = AbstractLabelOperator.EqualRegEx;
+              break;
+            case FilterOperator.NotLike:
+              operator = AbstractLabelOperator.NotEqualRegEx;
+              break;
+            default:
+              continue; // Skip non-mappable operators
+          }
+
+          const name = filter.key || (filter.hint ? this._mapHintToLabelName(filter.hint) : '');
+          const value = 'value' in filter ? String(filter.value || '') : '';
+
+          if (name && value) {
+            labelMatchers.push({ name, value, operator });
+          }
+        }
+      }
+
+      return {
+        refId: query.refId || 'A',
+        labelMatchers,
+      };
+    });
+  }
+
+  /**
+   * Maps common label names from other datasources to OTEL column names.
+   */
+  private _mapLabelToOtelColumn(label: string): string {
+    const labelMap: Record<string, string> = {
+      'service': 'ServiceName',
+      'service_name': 'ServiceName',
+      'servicename': 'ServiceName',
+      'app': 'ServiceName',
+      'application': 'ServiceName',
+      'level': 'SeverityText',
+      'severity': 'SeverityText',
+      'log_level': 'SeverityText',
+      'trace_id': 'TraceId',
+      'traceid': 'TraceId',
+      'span_id': 'SpanId',
+      'spanid': 'SpanId',
+      'namespace': "ResourceAttributes['service.namespace']",
+      'k8s_namespace': "ResourceAttributes['k8s.namespace.name']",
+      'pod': "ResourceAttributes['k8s.pod.name']",
+      'container': "ResourceAttributes['k8s.container.name']",
+    };
+    return labelMap[label.toLowerCase()] || label;
+  }
+
+  /**
+   * Maps ColumnHint back to common label names for export.
+   */
+  private _mapHintToLabelName(hint: ColumnHint): string {
+    const hintMap: Record<string, string> = {
+      [ColumnHint.TraceServiceName]: 'service',
+      [ColumnHint.LogLevel]: 'level',
+      [ColumnHint.TraceId]: 'trace_id',
+      [ColumnHint.TraceSpanId]: 'span_id',
+      [ColumnHint.LogMessage]: 'body',
+      [ColumnHint.TraceOperationName]: 'operation',
+    };
+    return hintMap[hint] || hint;
   }
 
   private getMacroArgs(query: string, argsIndex: number): string[] {

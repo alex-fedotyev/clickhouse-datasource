@@ -705,6 +705,24 @@ export const transformQueryResponseWithTraceAndLogLinks = (
     }
   });
 
+  // T2.1: Generate service map Node Graph frames from trace search results
+  res.data.forEach((frame: DataFrame) => {
+    const originalQuery = req.targets.find((t) => t.refId === frame.refId) as CHBuilderQuery;
+    if (!originalQuery || originalQuery.editorType !== EditorType.Builder) {
+      return;
+    }
+    if (
+      originalQuery.builderOptions?.queryType === QueryType.Traces &&
+      !originalQuery.builderOptions?.meta?.isTraceIdMode &&
+      frame.fields.length > 0
+    ) {
+      const serviceMapFrames = generateServiceMapFrames(frame, originalQuery.refId || 'A');
+      if (serviceMapFrames.length > 0) {
+        res.data = [...res.data, ...serviceMapFrames];
+      }
+    }
+  });
+
   return res;
 };
 
