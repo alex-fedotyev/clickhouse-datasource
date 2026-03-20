@@ -199,7 +199,7 @@
           { "matcher": { "id": "byRegexp", "options": "/(?:^count )?TRACE$|(?:^count )?Trace$/i" }, "properties": [{ "id": "displayName", "value": "trace" }, { "id": "color", "value": { "fixedColor": "#B877D9", "mode": "fixed" } }] }
         ]
       },
-      "gridPos": { "h": 9, "w": 8, "x": 0, "y": 12 },
+      "gridPos": { "h": 13, "w": 8, "x": 0, "y": 12 },
       "id": 201,
       "options": { "legend": { "displayMode": "list", "placement": "bottom", "calcs": ["sum"] }, "tooltip": { "mode": "multi" } },
       "title": "Log Volume — $service",
@@ -217,7 +217,7 @@
     {
       "datasource": { "type": "grafana-clickhouse-datasource", "uid": "${datasource}" },
       "fieldConfig": { "defaults": {}, "overrides": [] },
-      "gridPos": { "h": 9, "w": 16, "x": 8, "y": 12 },
+      "gridPos": { "h": 13, "w": 16, "x": 8, "y": 12 },
       "id": 202,
       "options": {
         "showTime": true,
@@ -241,7 +241,7 @@
         {
           "datasource": { "type": "grafana-clickhouse-datasource", "uid": "${datasource}" },
           "editorType": "sql",
-          "rawSql": "SELECT\n  Timestamp AS timestamp,\n  Body AS body,\n  SeverityText AS level,\n  ServiceName,\n  TraceId,\n  SpanId,\n  ResourceAttributes['service.namespace'] AS namespace,\n  ResourceAttributes['k8s.pod.name'] AS k8s_pod\nFROM otel_logs\nWHERE $__timeFilter(Timestamp)\n  AND ServiceName = '${service}'\n  AND $__conditionalAll(SeverityText IN ($level_filter), $level_filter)\n  AND $__conditionalAll(hasToken(Body, $search), $search)\nORDER BY Timestamp DESC\nLIMIT 50",
+          "rawSql": "SELECT\n  Timestamp AS timestamp,\n  Body AS body,\n  SeverityText AS level,\n  ServiceName,\n  TraceId,\n  SpanId,\n  ResourceAttributes['service.namespace'] AS namespace,\n  ResourceAttributes['k8s.pod.name'] AS k8s_pod\nFROM otel_logs\nWHERE $__timeFilter(Timestamp)\n  AND ServiceName = '${service}'\n  AND $__conditionalAll(SeverityText IN ($level_filter), $level_filter)\n  AND $__conditionalAll(hasToken(Body, $search), $search)\nORDER BY Timestamp DESC\nLIMIT 100",
           "refId": "A",
           "format": 2
         }

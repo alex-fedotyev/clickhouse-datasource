@@ -93,7 +93,8 @@ export const FilterPopover = (props: FilterPopoverProps) => {
       return values
         .filter((v) => !inputValue || v.toLowerCase().includes(inputValue.toLowerCase()))
         .map((v) => ({ label: v, value: v }));
-    } catch {
+    } catch (err) {
+      console.error('FilterPopover: failed to load values for column', selectedColumn, err);
       return [];
     }
   }, [datasource, database, table, selectedColumn, isMapColumn, selectedMapKey]);
@@ -169,8 +170,9 @@ export const FilterPopover = (props: FilterPopoverProps) => {
         <div className={styles.field}>
           <span className={styles.fieldLabel}>Value</span>
           <AsyncSelect
+            key={`${selectedColumn}-${selectedMapKey}`}
             loadOptions={loadValueOptions}
-            defaultOptions
+            defaultOptions={Boolean(selectedColumn)}
             value={value ? { label: value, value } : undefined}
             onChange={(v) => setValue(v?.value || '')}
             allowCustomValue

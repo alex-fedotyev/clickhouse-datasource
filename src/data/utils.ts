@@ -125,6 +125,9 @@ export const columnLabelToPlaceholder = (label: string) => label.toLowerCase().r
  * Field config map for trace search result columns.
  * Maps column name (lowercase) to Grafana FieldConfig for better default display.
  */
+// filterable: true enables the filter-for/filter-out icons on trace search table columns.
+// NOT set on TraceId (click opens trace waterfall, not a filter action) or Duration/StartTime (not useful to filter).
+// Safe to set on trace frames — only LOG frames cause stack overflow with filterable.
 const traceSearchFieldConfigs: Record<string, FieldConfig> = {
   duration: {
     unit: 'ns',
@@ -135,9 +138,11 @@ const traceSearchFieldConfigs: Record<string, FieldConfig> = {
   },
   servicename: {
     displayName: 'Service Name',
+    filterable: true,
   },
   operationname: {
     displayName: 'Operation Name',
+    filterable: true,
   },
   traceid: {
     displayName: 'Trace ID',
@@ -150,15 +155,18 @@ const traceSearchFieldConfigs: Record<string, FieldConfig> = {
   },
   statuscode: {
     displayName: 'Status Code',
+    filterable: true,
   },
   statusmessage: {
     displayName: 'Status Message',
   },
   spankind: {
     displayName: 'Span Kind',
+    filterable: true,
   },
   spanname: {
     displayName: 'Span Name',
+    filterable: true,
   },
 };
 

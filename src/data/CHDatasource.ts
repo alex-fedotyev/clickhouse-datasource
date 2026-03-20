@@ -1337,7 +1337,7 @@ export class Datasource
   }
 
   async fetchDistinctValues(column: string, db: string, table: string, limit = 200): Promise<string[]> {
-    const rawSql = `SELECT DISTINCT "${column}" FROM "${db}"."${table}" LIMIT ${limit}`;
+    const rawSql = `SELECT DISTINCT ${column} FROM "${db}"."${table}" LIMIT ${limit}`;
     return this.fetchData(rawSql);
   }
 
