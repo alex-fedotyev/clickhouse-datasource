@@ -163,101 +163,38 @@ const traceSearchFieldConfigs: Record<string, FieldConfig> = {
 };
 
 /**
- * T1.9: Field config map for log query result columns.
+ * Applies field configs to trace search result frames for better default display.
+ * NOTE: Only applies to trace search results (non-traceIdMode).
+ * Applying configs to log frames causes stack overflow in Grafana's deep-clone.
  */
-const logFieldConfigs: Record<string, FieldConfig> = {
-  timestamp: {
-    displayName: 'Timestamp',
-  },
-  body: {
-    displayName: 'Body',
-  },
-  severitytext: {
-    displayName: 'Severity',
-  },
-  severitynumber: {
-    displayName: 'Severity Number',
-  },
-  servicename: {
-    displayName: 'Service Name',
-  },
-  traceid: {
-    displayName: 'Trace ID',
-  },
-  spanid: {
-    displayName: 'Span ID',
-  },
-};
-
-/**
- * T1.9: Generic field config patterns applied to any query type.
- * Recognizes common ClickHouse and OTEL column naming conventions.
- */
-const genericFieldConfigPatterns: Array<{ match: (name: string) => boolean; config: FieldConfig }> = [
-  // Duration fields in nanoseconds (OTEL standard)
-  { match: (n) => /^duration$/i.test(n), config: { unit: 'ns' } },
-  // Duration fields in milliseconds (common custom schemas)
-  { match: (n) => /duration_ms|elapsed_ms|latency_ms|response_time_ms/i.test(n), config: { unit: 'ms' } },
-  // Byte fields
-  { match: (n) => /bytes_read|bytes_written|read_bytes|written_bytes|bytes_sent|bytes_received|content_length|size_bytes/i.test(n), config: { unit: 'bytes' } },
-  // Percentage fields
-  { match: (n) => /error_rate|success_rate|cpu_usage|memory_usage|utilization/i.test(n), config: { unit: 'percentunit' } },
-  // Request count / rate
-  { match: (n) => /requests_per_second|rps|qps|queries_per_second/i.test(n), config: { unit: 'reqps' } },
-];
-
-/**
- * T1.9: Applies field configs to all query result frames for better default display.
- * Extends the trace-specific field config to logs, metrics, and general queries.
- */
-export const applyFieldConfigs = (req: DataQueryRequest<CHQuery>, res: DataQueryResponse): DataQueryResponse => {
+export const applyTraceSearchFieldConfig = (req: DataQueryRequest<CHQuery>, res: DataQueryResponse): DataQueryResponse => {
   res.data.forEach((frame: DataFrame) => {
     const originalQuery = req.targets.find((t) => t.refId === frame.refId) as CHBuilderQuery;
     if (!originalQuery) {
       return;
     }
 
-    // Determine which config map to use based on query type
-    let configMap: Record<string, FieldConfig> | undefined;
-    if (originalQuery.editorType === EditorType.Builder) {
-      if (originalQuery.builderOptions.queryType === QueryType.Traces && !originalQuery.builderOptions.meta?.isTraceIdMode) {
-        configMap = traceSearchFieldConfigs;
-      } else if (originalQuery.builderOptions.queryType === QueryType.Logs) {
-        configMap = logFieldConfigs;
-      }
+    const isTraceSearch = originalQuery.editorType === EditorType.Builder &&
+      originalQuery.builderOptions.queryType === QueryType.Traces &&
+      !originalQuery.builderOptions.meta?.isTraceIdMode;
+
+    if (!isTraceSearch) {
+      return;
     }
 
     frame.fields.forEach((field) => {
-      // Apply query-type-specific configs
-      if (configMap) {
-        const fieldConfig = configMap[field.name.toLowerCase()];
-        if (fieldConfig) {
-          field.config = { ...field.config, ...fieldConfig };
-        }
-      }
-
-      // Apply generic pattern-based configs (only if no unit already set)
-      if (!field.config?.unit) {
-        for (const pattern of genericFieldConfigPatterns) {
-          if (pattern.match(field.name)) {
-            field.config = { ...field.config, ...pattern.config };
-            break;
-          }
-        }
-      }
-
-      // Make all fields filterable by default
-      if (field.config && field.config.filterable === undefined) {
-        field.config.filterable = true;
+      const fieldConfig = traceSearchFieldConfigs[field.name.toLowerCase()];
+      if (fieldConfig) {
+        field.config = {
+          ...field.config,
+          ...fieldConfig,
+        };
       }
     });
   });
 
   return res;
 };
-
-// Keep backward compat alias
-export const applyTraceSearchFieldConfig = applyFieldConfigs;
 
 /**
  * T-NEW: Enriches response frames with Grafana metadata for optimal visualization.
