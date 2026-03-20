@@ -492,7 +492,10 @@ export const transformQueryResponseWithTraceAndLogLinks = (
   res: DataQueryResponse
 ): DataQueryResponse => {
   applyTraceSearchFieldConfig(req, res);
-  enrichResponseMetadata(req, res);
+  // NOTE: enrichResponseMetadata disabled — was causing stack overflow in Grafana's
+  // frame deep-clone logic. The metadata enrichment (preferredVisualisationType, etc.)
+  // needs to be done differently, likely via the backend response metadata.
+  // enrichResponseMetadata(req, res);
 
   res.data.forEach((frame: DataFrame) => {
     const originalQuery = req.targets.find((t) => t.refId === frame.refId) as CHBuilderQuery;
@@ -697,7 +700,10 @@ export const transformQueryResponseWithTraceAndLogLinks = (
     }
   });
 
-  // T2.1: Generate service map Node Graph frames from trace search results
+  // T2.1: Service map Node Graph frames disabled — was causing stack overflow
+  // when Grafana deep-clones frames with plain array values fields.
+  // TODO: Re-enable with proper Vector wrapper for field values.
+  /*
   res.data.forEach((frame: DataFrame) => {
     const originalQuery = req.targets.find((t) => t.refId === frame.refId) as CHBuilderQuery;
     if (!originalQuery || originalQuery.editorType !== EditorType.Builder) {
@@ -714,6 +720,7 @@ export const transformQueryResponseWithTraceAndLogLinks = (
       }
     }
   });
+  */
 
   return res;
 };
