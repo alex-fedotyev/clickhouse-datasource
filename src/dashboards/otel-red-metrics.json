@@ -13,14 +13,14 @@
       "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 2, "showPoints": "never" }, "unit": "reqps" } },
       "gridPos": { "h": 7, "w": 8, "x": 0, "y": 1 }, "id": 1,
       "title": "Request Rate", "type": "timeseries",
-      "targets": [{ "datasource": { "type": "grafana-clickhouse-datasource", "uid": "${datasource}" }, "editorType": "sql", "rawSql": "SELECT toStartOfInterval(Timestamp, INTERVAL $__interval_s second) AS time, count() / $__interval_s AS rps FROM $__database.otel_traces WHERE $__timeFilter(Timestamp) AND ServiceName = $service AND ($operation = '' OR SpanName = $operation) AND ParentSpanId = '' GROUP BY time ORDER BY time", "refId": "A", "format": 0 }]
+      "targets": [{ "datasource": { "type": "grafana-clickhouse-datasource", "uid": "${datasource}" }, "editorType": "sql", "rawSql": "SELECT toStartOfInterval(Timestamp, INTERVAL $__interval_s second) AS time, count() / $__interval_s AS rps FROM otel_traces WHERE $__timeFilter(Timestamp) AND ServiceName = '${service}' AND $__conditionalAll(SpanName IN ($operation), $operation) AND ParentSpanId = '' GROUP BY time ORDER BY time", "refId": "A", "format": 0 }]
     },
     {
       "datasource": { "type": "grafana-clickhouse-datasource", "uid": "${datasource}" },
       "fieldConfig": { "defaults": { "color": { "fixedColor": "red", "mode": "fixed" }, "custom": { "drawStyle": "line", "fillOpacity": 20, "lineWidth": 2 }, "unit": "percentunit", "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 0.01 }, { "color": "red", "value": 0.05 }] } } },
       "gridPos": { "h": 7, "w": 8, "x": 8, "y": 1 }, "id": 2,
       "title": "Error Rate", "type": "timeseries",
-      "targets": [{ "datasource": { "type": "grafana-clickhouse-datasource", "uid": "${datasource}" }, "editorType": "sql", "rawSql": "SELECT toStartOfInterval(Timestamp, INTERVAL $__interval_s second) AS time, countIf(StatusCode = 'STATUS_CODE_ERROR') / count() AS error_rate FROM $__database.otel_traces WHERE $__timeFilter(Timestamp) AND ServiceName = $service AND ($operation = '' OR SpanName = $operation) AND ParentSpanId = '' GROUP BY time ORDER BY time", "refId": "A", "format": 0 }]
+      "targets": [{ "datasource": { "type": "grafana-clickhouse-datasource", "uid": "${datasource}" }, "editorType": "sql", "rawSql": "SELECT toStartOfInterval(Timestamp, INTERVAL $__interval_s second) AS time, countIf(StatusCode = 'STATUS_CODE_ERROR') / count() AS error_rate FROM otel_traces WHERE $__timeFilter(Timestamp) AND ServiceName = '${service}' AND $__conditionalAll(SpanName IN ($operation), $operation) AND ParentSpanId = '' GROUP BY time ORDER BY time", "refId": "A", "format": 0 }]
     },
     {
       "datasource": { "type": "grafana-clickhouse-datasource", "uid": "${datasource}" },
@@ -29,7 +29,7 @@
       },
       "gridPos": { "h": 7, "w": 8, "x": 16, "y": 1 }, "id": 3,
       "title": "Duration Percentiles", "type": "timeseries",
-      "targets": [{ "datasource": { "type": "grafana-clickhouse-datasource", "uid": "${datasource}" }, "editorType": "sql", "rawSql": "SELECT toStartOfInterval(Timestamp, INTERVAL $__interval_s second) AS time, quantile(0.5)(Duration) AS p50, quantile(0.9)(Duration) AS p90, quantile(0.99)(Duration) AS p99 FROM $__database.otel_traces WHERE $__timeFilter(Timestamp) AND ServiceName = $service AND ($operation = '' OR SpanName = $operation) AND ParentSpanId = '' GROUP BY time ORDER BY time", "refId": "A", "format": 0 }]
+      "targets": [{ "datasource": { "type": "grafana-clickhouse-datasource", "uid": "${datasource}" }, "editorType": "sql", "rawSql": "SELECT toStartOfInterval(Timestamp, INTERVAL $__interval_s second) AS time, quantile(0.5)(Duration) AS p50, quantile(0.9)(Duration) AS p90, quantile(0.99)(Duration) AS p99 FROM otel_traces WHERE $__timeFilter(Timestamp) AND ServiceName = '${service}' AND $__conditionalAll(SpanName IN ($operation), $operation) AND ParentSpanId = '' GROUP BY time ORDER BY time", "refId": "A", "format": 0 }]
     },
     { "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 8 }, "id": 101, "title": "Errors & Slow Operations", "type": "row" },
     {
@@ -41,7 +41,7 @@
       },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 9 }, "id": 4,
       "title": "Top Errors (click Operation → trace search)", "type": "table",
-      "targets": [{ "datasource": { "type": "grafana-clickhouse-datasource", "uid": "${datasource}" }, "editorType": "sql", "rawSql": "SELECT SpanName AS Operation, StatusMessage AS Error, count() AS Count, max(Timestamp) AS \"Last Seen\" FROM $__database.otel_traces WHERE $__timeFilter(Timestamp) AND ServiceName = $service AND StatusCode = 'STATUS_CODE_ERROR' GROUP BY SpanName, StatusMessage ORDER BY Count DESC LIMIT 20", "refId": "A", "format": 1 }]
+      "targets": [{ "datasource": { "type": "grafana-clickhouse-datasource", "uid": "${datasource}" }, "editorType": "sql", "rawSql": "SELECT SpanName AS Operation, StatusMessage AS Error, count() AS Count, max(Timestamp) AS \"Last Seen\" FROM otel_traces WHERE $__timeFilter(Timestamp) AND ServiceName = '${service}' AND StatusCode = 'STATUS_CODE_ERROR' GROUP BY SpanName, StatusMessage ORDER BY Count DESC LIMIT 20", "refId": "A", "format": 1 }]
     },
     {
       "datasource": { "type": "grafana-clickhouse-datasource", "uid": "${datasource}" },
@@ -54,7 +54,7 @@
       },
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 9 }, "id": 5,
       "title": "Slowest Operations (click → trace search)", "type": "table",
-      "targets": [{ "datasource": { "type": "grafana-clickhouse-datasource", "uid": "${datasource}" }, "editorType": "sql", "rawSql": "SELECT SpanName AS Operation, count() AS Count, quantile(0.5)(Duration) AS P50, quantile(0.99)(Duration) AS P99 FROM $__database.otel_traces WHERE $__timeFilter(Timestamp) AND ServiceName = $service AND ($operation = '' OR SpanName = $operation) GROUP BY SpanName ORDER BY P99 DESC LIMIT 20", "refId": "A", "format": 1 }]
+      "targets": [{ "datasource": { "type": "grafana-clickhouse-datasource", "uid": "${datasource}" }, "editorType": "sql", "rawSql": "SELECT SpanName AS Operation, count() AS Count, quantile(0.5)(Duration) AS P50, quantile(0.99)(Duration) AS P99 FROM otel_traces WHERE $__timeFilter(Timestamp) AND ServiceName = '${service}' AND $__conditionalAll(SpanName IN ($operation), $operation) GROUP BY SpanName ORDER BY P99 DESC LIMIT 20", "refId": "A", "format": 1 }]
     },
     { "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 17 }, "id": 102, "title": "Related Logs", "type": "row" },
     {
@@ -62,7 +62,7 @@
       "gridPos": { "h": 8, "w": 24, "x": 0, "y": 18 }, "id": 6,
       "options": { "showTime": true, "showLabels": true, "wrapLogMessage": true, "enableLogDetails": true, "dedupStrategy": "none", "sortOrder": "Descending" },
       "title": "Logs for ${service}", "type": "logs",
-      "targets": [{ "datasource": { "type": "grafana-clickhouse-datasource", "uid": "${datasource}" }, "editorType": "sql", "rawSql": "SELECT Timestamp AS timestamp, Body AS body, SeverityText AS level, ServiceName, TraceId, SpanId FROM $__database.otel_logs WHERE $__timeFilter(Timestamp) AND ServiceName = $service ORDER BY Timestamp DESC LIMIT 200", "refId": "A", "format": 2 }]
+      "targets": [{ "datasource": { "type": "grafana-clickhouse-datasource", "uid": "${datasource}" }, "editorType": "sql", "rawSql": "SELECT Timestamp AS timestamp, Body AS body, SeverityText AS level, ServiceName, TraceId, SpanId FROM otel_logs WHERE $__timeFilter(Timestamp) AND ServiceName = '${service}' ORDER BY Timestamp DESC LIMIT 200", "refId": "A", "format": 2 }]
     }
   ],
   "refresh": "30s",
@@ -71,8 +71,8 @@
   "templating": {
     "list": [
       { "current": {}, "hide": 0, "label": "Data Source", "name": "datasource", "query": "grafana-clickhouse-datasource", "refresh": 1, "type": "datasource" },
-      { "datasource": { "type": "grafana-clickhouse-datasource", "uid": "${datasource}" }, "hide": 0, "includeAll": false, "label": "Service", "name": "service", "query": { "editorType": "sql", "rawSql": "SELECT DISTINCT ServiceName FROM $__database.otel_traces WHERE $__timeFilter(Timestamp) ORDER BY ServiceName" }, "refresh": 2, "sort": 1, "type": "query" },
-      { "datasource": { "type": "grafana-clickhouse-datasource", "uid": "${datasource}" }, "hide": 0, "includeAll": true, "label": "Operation", "name": "operation", "query": { "editorType": "sql", "rawSql": "SELECT DISTINCT SpanName FROM $__database.otel_traces WHERE $__timeFilter(Timestamp) AND ServiceName = $service ORDER BY SpanName" }, "refresh": 2, "sort": 1, "type": "query", "allValue": "" }
+      { "datasource": { "type": "grafana-clickhouse-datasource", "uid": "${datasource}" }, "hide": 0, "includeAll": false, "label": "Service", "name": "service", "query": { "editorType": "sql", "rawSql": "SELECT DISTINCT ServiceName FROM otel_traces WHERE $__timeFilter(Timestamp) ORDER BY ServiceName" }, "refresh": 2, "sort": 1, "type": "query" },
+      { "datasource": { "type": "grafana-clickhouse-datasource", "uid": "${datasource}" }, "hide": 0, "includeAll": true, "label": "Operation", "name": "operation", "query": { "editorType": "sql", "rawSql": "SELECT DISTINCT SpanName FROM otel_traces WHERE $__timeFilter(Timestamp) AND ServiceName = '${service}' ORDER BY SpanName" }, "refresh": 2, "sort": 1, "type": "query", "allValue": "" }
     ]
   },
   "time": { "from": "now-1h", "to": "now" },

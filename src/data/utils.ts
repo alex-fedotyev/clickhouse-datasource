@@ -1,4 +1,4 @@
-import { CoreApp, DataFrame, DataFrameType, DataQueryRequest, DataQueryResponse, FieldConfig, FieldType, MutableDataFrame, NodeGraphDataFrameFieldNames } from '@grafana/data';
+import { CoreApp, DataFrame, DataFrameType, DataQueryRequest, DataQueryResponse, FieldConfig, FieldType, NodeGraphDataFrameFieldNames } from '@grafana/data';
 import {
   ColumnHint,
   FilterOperator,
@@ -268,8 +268,6 @@ const enrichResponseMetadata = (
   req: DataQueryRequest<CHQuery>,
   res: DataQueryResponse
 ): DataQueryResponse => {
-  const additionalFrames: DataFrame[] = [];
-
   res.data.forEach((frame: DataFrame) => {
     const originalQuery = req.targets.find((t) => t.refId === frame.refId) as CHBuilderQuery;
     if (!originalQuery) {
@@ -281,42 +279,36 @@ const enrichResponseMetadata = (
       frame.meta = {};
     }
 
+    // Skip if already enriched (prevent re-processing loops)
+    if (frame.meta.custom?.enriched) {
+      return;
+    }
+
     // Show executed SQL in Query Inspector (T6.1 frontend part)
     if (originalQuery.rawSql && !frame.meta.executedQueryString) {
       frame.meta.executedQueryString = originalQuery.rawSql;
     }
 
-    // Set DataFrameType and preferredVisualisationType based on query type
+    // Set preferredVisualisationType based on query type
+    // NOTE: Do NOT set DataFrameType.LogLines — it causes infinite re-processing
+    // The backend already handles log frame detection via the format field
     if (originalQuery.editorType === EditorType.Builder) {
       const queryType = originalQuery.builderOptions?.queryType;
       const isTraceIdMode = originalQuery.builderOptions?.meta?.isTraceIdMode;
 
-      if (queryType === QueryType.Logs) {
-        frame.meta.type = DataFrameType.LogLines;
-        frame.meta.preferredVisualisationType = 'logs';
-      } else if (queryType === QueryType.Traces && isTraceIdMode) {
+      if (queryType === QueryType.Traces && isTraceIdMode) {
         frame.meta.preferredVisualisationType = 'trace';
-      } else if (queryType === QueryType.Traces && !isTraceIdMode) {
-        frame.meta.preferredVisualisationType = 'table';
-
-        // Generate a supplementary status breakdown bar chart frame for Explore
-        if (frame.fields.length > 0) {
-          const statusFrame = generateTraceStatusFrame(frame, originalQuery.refId);
-          if (statusFrame) {
-            additionalFrames.push(statusFrame);
-          }
-        }
       } else if (queryType === QueryType.TimeSeries) {
-        frame.meta.type = DataFrameType.TimeSeriesWide;
         frame.meta.preferredVisualisationType = 'graph';
       }
     }
-  });
 
-  // Append supplementary frames
-  if (additionalFrames.length > 0) {
-    res.data = [...res.data, ...additionalFrames];
-  }
+    // Mark as enriched
+    if (!frame.meta.custom) {
+      frame.meta.custom = {};
+    }
+    frame.meta.custom.enriched = true;
+  });
 
   return res;
 };
