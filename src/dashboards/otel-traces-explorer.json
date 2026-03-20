@@ -410,6 +410,16 @@
               "limit": 1000
             }
           }
+        },
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "${datasource}"
+          },
+          "editorType": "sql",
+          "rawSql": "SELECT concat(parent.ServiceName, '-', child.ServiceName) AS id, parent.ServiceName AS source, child.ServiceName AS target, concat(toString(count()), ' calls') AS mainstat FROM otel_traces AS child INNER JOIN otel_traces AS parent ON child.ParentSpanId = parent.SpanId AND child.TraceId = parent.TraceId WHERE $__timeFilter(child.Timestamp) AND $__timeFilter(parent.Timestamp) AND parent.ServiceName != child.ServiceName AND $__conditionalAll(child.ServiceName IN ($service) OR parent.ServiceName IN ($service), $service) GROUP BY source, target ORDER BY count() DESC LIMIT 50",
+          "refId": "edges",
+          "format": 1
         }
       ],
       "fieldConfig": {
