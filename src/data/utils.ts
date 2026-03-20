@@ -642,25 +642,11 @@ export const transformQueryResponseWithTraceAndLogLinks = (
     }
   });
 
-  // T2.1: Service map Node Graph frames from trace search results.
-  // Generates nodes per service with request count, avg duration, and error arc.
-  // Safe: generated frames have no traceID field, so the data link loop above skips them.
-  res.data.forEach((frame: DataFrame) => {
-    const originalQuery = req.targets.find((t) => t.refId === frame.refId) as CHBuilderQuery;
-    if (!originalQuery || originalQuery.editorType !== EditorType.Builder) {
-      return;
-    }
-    if (
-      originalQuery.builderOptions?.queryType === QueryType.Traces &&
-      !originalQuery.builderOptions?.meta?.isTraceIdMode &&
-      frame.fields.length > 0
-    ) {
-      const serviceMapFrames = generateServiceMapFrames(frame, originalQuery.refId || 'A');
-      if (serviceMapFrames.length > 0) {
-        res.data = [...res.data, ...serviceMapFrames];
-      }
-    }
-  });
+  // T2.1: Service map Node Graph disabled in Explore.
+  // The sample-derived node graph (1 node per service in LIMIT results) is not useful.
+  // The real service map lives in the OTel Traces Explorer dashboard with dedicated
+  // nodes + edges SQL queries (ParentSpanId JOIN for caller→callee topology).
+  // Future: replace with duration histogram supplementary query for traces.
 
   return res;
 };
