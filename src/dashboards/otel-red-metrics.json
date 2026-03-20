@@ -13,14 +13,14 @@
       "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 2, "showPoints": "never" }, "unit": "reqps" } },
       "gridPos": { "h": 7, "w": 8, "x": 0, "y": 1 }, "id": 1,
       "title": "Request Rate", "type": "timeseries",
-      "targets": [{ "datasource": { "type": "grafana-clickhouse-datasource", "uid": "${datasource}" }, "editorType": "sql", "rawSql": "SELECT toStartOfInterval(Timestamp, INTERVAL $__interval_s second) AS time, count() / $__interval_s AS rps FROM otel_traces WHERE $__timeFilter(Timestamp) AND ServiceName = '${service}' AND $__conditionalAll(SpanName IN ($operation), $operation) AND ParentSpanId = '' GROUP BY time ORDER BY time", "refId": "A", "format": 0 }]
+      "targets": [{ "datasource": { "type": "grafana-clickhouse-datasource", "uid": "${datasource}" }, "editorType": "sql", "rawSql": "SELECT toStartOfInterval(Timestamp, INTERVAL $__interval_s second) AS time, count() / $__interval_s AS rps FROM otel_traces WHERE $__timeFilter(Timestamp) AND ServiceName = '${service}' AND $__conditionalAll(SpanName IN ($operation), $operation) GROUP BY time ORDER BY time", "refId": "A", "format": 0 }]
     },
     {
       "datasource": { "type": "grafana-clickhouse-datasource", "uid": "${datasource}" },
       "fieldConfig": { "defaults": { "color": { "fixedColor": "red", "mode": "fixed" }, "custom": { "drawStyle": "line", "fillOpacity": 20, "lineWidth": 2 }, "unit": "percentunit", "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 0.01 }, { "color": "red", "value": 0.05 }] } } },
       "gridPos": { "h": 7, "w": 8, "x": 8, "y": 1 }, "id": 2,
       "title": "Error Rate", "type": "timeseries",
-      "targets": [{ "datasource": { "type": "grafana-clickhouse-datasource", "uid": "${datasource}" }, "editorType": "sql", "rawSql": "SELECT toStartOfInterval(Timestamp, INTERVAL $__interval_s second) AS time, countIf(StatusCode = 'STATUS_CODE_ERROR') / count() AS error_rate FROM otel_traces WHERE $__timeFilter(Timestamp) AND ServiceName = '${service}' AND $__conditionalAll(SpanName IN ($operation), $operation) AND ParentSpanId = '' GROUP BY time ORDER BY time", "refId": "A", "format": 0 }]
+      "targets": [{ "datasource": { "type": "grafana-clickhouse-datasource", "uid": "${datasource}" }, "editorType": "sql", "rawSql": "SELECT toStartOfInterval(Timestamp, INTERVAL $__interval_s second) AS time, countIf(StatusCode = 'STATUS_CODE_ERROR') / count() AS error_rate FROM otel_traces WHERE $__timeFilter(Timestamp) AND ServiceName = '${service}' AND $__conditionalAll(SpanName IN ($operation), $operation) GROUP BY time ORDER BY time", "refId": "A", "format": 0 }]
     },
     {
       "datasource": { "type": "grafana-clickhouse-datasource", "uid": "${datasource}" },
@@ -29,7 +29,7 @@
       },
       "gridPos": { "h": 7, "w": 8, "x": 16, "y": 1 }, "id": 3,
       "title": "Duration Percentiles", "type": "timeseries",
-      "targets": [{ "datasource": { "type": "grafana-clickhouse-datasource", "uid": "${datasource}" }, "editorType": "sql", "rawSql": "SELECT toStartOfInterval(Timestamp, INTERVAL $__interval_s second) AS time, quantile(0.5)(Duration) AS p50, quantile(0.9)(Duration) AS p90, quantile(0.99)(Duration) AS p99 FROM otel_traces WHERE $__timeFilter(Timestamp) AND ServiceName = '${service}' AND $__conditionalAll(SpanName IN ($operation), $operation) AND ParentSpanId = '' GROUP BY time ORDER BY time", "refId": "A", "format": 0 }]
+      "targets": [{ "datasource": { "type": "grafana-clickhouse-datasource", "uid": "${datasource}" }, "editorType": "sql", "rawSql": "SELECT toStartOfInterval(Timestamp, INTERVAL $__interval_s second) AS time, quantile(0.5)(Duration) AS p50, quantile(0.9)(Duration) AS p90, quantile(0.99)(Duration) AS p99 FROM otel_traces WHERE $__timeFilter(Timestamp) AND ServiceName = '${service}' AND $__conditionalAll(SpanName IN ($operation), $operation) GROUP BY time ORDER BY time", "refId": "A", "format": 0 }]
     },
     { "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 8 }, "id": 101, "title": "Errors & Slow Operations", "type": "row" },
     {
