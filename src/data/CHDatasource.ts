@@ -104,7 +104,7 @@ export class Datasource
           '  Body AS text,',
           "  SeverityText AS tags,",
           "  ServiceName AS title",
-          'FROM $__database.otel_logs',
+          'FROM otel_logs',
           'WHERE $__timeFilter(Timestamp)',
           "  AND SeverityText IN ('ERROR', 'FATAL')",
           'ORDER BY Timestamp',

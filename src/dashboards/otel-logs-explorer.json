@@ -307,17 +307,20 @@
       },
       "id": 3,
       "options": {
-        "colorMode": "background",
-        "graphMode": "none",
+        "displayMode": "gradient",
+        "minVizWidth": 0,
+        "minVizHeight": 10,
+        "namePlacement": "auto",
         "orientation": "horizontal",
         "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
+          "calcs": [],
+          "fields": "/Count/",
+          "values": true
         },
-        "textMode": "auto"
+        "showUnfilled": true,
+        "sizing": "auto",
+        "textMode": "value_and_name",
+        "valueMode": "color"
       },
       "title": "Services (click to filter)",
       "type": "bargauge",
