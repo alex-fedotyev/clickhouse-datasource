@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
 import { QueryEditorProps } from '@grafana/data';
 import { Datasource } from 'data/CHDatasource';
 import { EditorTypeSwitcher } from 'components/queryBuilder/EditorTypeSwitcher';
@@ -22,6 +22,12 @@ export type CHQueryEditorProps = QueryEditorProps<Datasource, CHQuery, CHConfig>
 export const CHQueryEditor = (props: CHQueryEditorProps) => {
   const { datasource, query: savedQuery, onRunQuery } = props;
   const query = migrateCHQuery(savedQuery);
+  const signalType = datasource.getSignalType();
+
+  // In focused mode, hide the EditorType switcher and Run button — CompactModeBar handles it
+  if (signalType && query.editorType !== EditorType.SQL) {
+    return <CHEditorByType {...props} query={query} />;
+  }
 
   return (
     <>
@@ -59,10 +65,17 @@ const CHEditorByType = (props: CHQueryEditorProps) => {
   }
   lastEditorType.current = query.editorType;
 
-  // Prevent trying to run empty query on load
+  // Prevent trying to run empty query on load, or stale query after datasource switch
+  const signalType = props.datasource.getSignalType();
   const shouldSkipChanges = useRef<boolean>(true);
   if (isBuilderOptionsRunnable(builderOptions)) {
-    shouldSkipChanges.current = false;
+    // If datasource has a signalType, only allow onChange when queryType matches
+    if (signalType) {
+      const expectedType = signalType === 'logs' ? 'logs' : signalType === 'traces' ? 'traces' : signalType === 'metrics' ? 'timeseries' : undefined;
+      shouldSkipChanges.current = builderOptions.queryType !== expectedType;
+    } else {
+      shouldSkipChanges.current = false;
+    }
   }
 
   useEffect(() => {
@@ -83,6 +96,29 @@ const CHEditorByType = (props: CHQueryEditorProps) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [builderOptions]);
 
+  const onSwitchToSql = useCallback(() => {
+    onChange({
+      ...query,
+      editorType: EditorType.SQL,
+      rawSql: generateSql(builderOptions),
+      queryType: builderOptions.queryType,
+      format: mapQueryBuilderOptionsToGrafanaFormat(builderOptions),
+      meta: { builderOptions },
+    } as CHQuery);
+  }, [onChange, query, builderOptions]);
+
+  // Direct query change bypass — used by CompactQueryEditor to avoid stale-query race on ds switch
+  const onQueryChange = useCallback((newOptions: import('types/queryBuilder').QueryBuilderOptions) => {
+    onChange({
+      ...query,
+      pluginVersion,
+      editorType: EditorType.Builder,
+      rawSql: generateSql(newOptions),
+      builderOptions: newOptions,
+      format: mapQueryBuilderOptionsToGrafanaFormat(newOptions),
+    });
+  }, [onChange, query]);
+
   if (query.editorType === EditorType.SQL) {
     return (
       <div data-testid="query-editor-section-sql">
@@ -96,8 +132,10 @@ const CHEditorByType = (props: CHQueryEditorProps) => {
       datasource={props.datasource}
       builderOptions={builderOptions}
       builderOptionsDispatch={builderOptionsDispatch}
+      onQueryChange={onQueryChange}
       generatedSql={query.rawSql}
       app={app}
+      onSwitchToSql={onSwitchToSql}
     />
   );
 };

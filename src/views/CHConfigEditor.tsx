@@ -4,7 +4,7 @@ import {
   onUpdateDatasourceJsonDataOption,
   onUpdateDatasourceSecureJsonDataOption,
 } from '@grafana/data';
-import { RadioButtonGroup, Switch, Input, SecretInput, Button, Field, Alert, Stack } from '@grafana/ui';
+import { RadioButtonGroup, Switch, Input, SecretInput, Button, Field, Alert, Stack, Select } from '@grafana/ui';
 import { CertificationKey } from '../components/ui/CertificationKey';
 import {
   CHConfig,
@@ -14,6 +14,7 @@ import {
   Protocol,
   CHTracesConfig,
   AliasTableEntry,
+  SignalType,
 } from 'types/config';
 import { gte as versionGte } from 'semver';
 import { ConfigSection, ConfigSubSection, DataSourceDescription } from 'components/experimental/ConfigSection';
@@ -231,6 +232,30 @@ export const ConfigEditor: React.FC<ConfigEditorProps> = (props) => {
         hasRequiredFields
       />
       <Divider />
+      <ConfigSection title="Signal Type" description="Optional: lock this datasource to a single signal type for a focused, compact query editor. Leave as 'All signals' for the full multi-signal experience.">
+        <Field label="Signal type" description="When set, the query editor shows a streamlined UI for this signal only">
+          <Select<SignalType | ''>
+            options={[
+              { label: 'All signals (default)', value: '', description: 'Full query builder with all options' },
+              { label: 'Logs', value: 'logs', description: 'Compact log search + filters' },
+              { label: 'Traces', value: 'traces', description: 'Compact trace search + filters' },
+              { label: 'Metrics', value: 'metrics', description: 'Time series builder' },
+            ]}
+            value={jsonData.signalType || ''}
+            onChange={(v) => {
+              onOptionsChange({
+                ...options,
+                jsonData: {
+                  ...options.jsonData,
+                  signalType: (v.value || undefined) as SignalType | undefined,
+                },
+              });
+            }}
+            width={40}
+          />
+        </Field>
+      </ConfigSection>
+      <Divider />
       <ConfigSection title="Server">
         <Field
           required
@@ -415,6 +440,115 @@ export const ConfigEditor: React.FC<ConfigEditorProps> = (props) => {
         </Field>
       </ConfigSection>
 
+      {/* --- FOCUSED MODE: flat config with just the signal table + query timeouts --- */}
+      {jsonData.signalType === 'logs' && (
+        <>
+          <Divider />
+          <LogsConfig
+            logsConfig={jsonData.logs}
+            onDefaultDatabaseChange={(db) => onLogsConfigChange('defaultDatabase', db)}
+            onDefaultTableChange={(table) => onLogsConfigChange('defaultTable', table)}
+            onOtelEnabledChange={(v) => onLogsConfigChange('otelEnabled', v)}
+            onOtelVersionChange={(v) => onLogsConfigChange('otelVersion', v)}
+            onFilterTimeColumnChange={(c) => onLogsConfigChange('filterTimeColumn', c)}
+            onTimeColumnChange={(c) => onLogsConfigChange('timeColumn', c)}
+            onLevelColumnChange={(c) => onLogsConfigChange('levelColumn', c)}
+            onMessageColumnChange={(c) => onLogsConfigChange('messageColumn', c)}
+            onSelectContextColumnsChange={(c) => onLogsConfigChange('selectContextColumns', c)}
+            onContextColumnsChange={(c) => onLogsConfigChange('contextColumns', c)}
+          />
+          <Divider />
+          <ConfigSection title="Query settings" isCollapsible isInitiallyOpen={false}>
+            <QuerySettingsConfig
+              dialTimeout={jsonData.dialTimeout}
+              queryTimeout={jsonData.queryTimeout}
+              connMaxLifetime={jsonData.connMaxLifetime}
+              maxIdleConns={jsonData.maxIdleConns}
+              maxOpenConns={jsonData.maxOpenConns}
+              validateSql={jsonData.validateSql}
+              onDialTimeoutChange={(e) => onUpdateDatasourceJsonDataOption(props, 'dialTimeout')(e)}
+              onQueryTimeoutChange={(e) => onUpdateDatasourceJsonDataOption(props, 'queryTimeout')(e)}
+              onConnMaxLifetimeChange={(e) => onUpdateDatasourceJsonDataOption(props, 'connMaxLifetime')(e)}
+              onConnMaxIdleConnsChange={(e) => onUpdateDatasourceJsonDataOption(props, 'maxIdleConns')(e)}
+              onConnMaxOpenConnsChange={(e) => onUpdateDatasourceJsonDataOption(props, 'maxOpenConns')(e)}
+              onValidateSqlChange={(e) => onSwitchToggle('validateSql', e.currentTarget.checked)}
+            />
+          </ConfigSection>
+        </>
+      )}
+      {jsonData.signalType === 'traces' && (
+        <>
+          <Divider />
+          <TracesConfig
+            tracesConfig={jsonData.traces}
+            onDefaultDatabaseChange={(db) => onTracesConfigChange('defaultDatabase', db)}
+            onDefaultTableChange={(table) => onTracesConfigChange('defaultTable', table)}
+            onOtelEnabledChange={(v) => onTracesConfigChange('otelEnabled', v)}
+            onOtelVersionChange={(v) => onTracesConfigChange('otelVersion', v)}
+            onTraceIdColumnChange={(c) => onTracesConfigChange('traceIdColumn', c)}
+            onSpanIdColumnChange={(c) => onTracesConfigChange('spanIdColumn', c)}
+            onOperationNameColumnChange={(c) => onTracesConfigChange('operationNameColumn', c)}
+            onParentSpanIdColumnChange={(c) => onTracesConfigChange('parentSpanIdColumn', c)}
+            onServiceNameColumnChange={(c) => onTracesConfigChange('serviceNameColumn', c)}
+            onDurationColumnChange={(c) => onTracesConfigChange('durationColumn', c)}
+            onDurationUnitChange={(c) => onTracesConfigChange('durationUnit', c)}
+            onStartTimeColumnChange={(c) => onTracesConfigChange('startTimeColumn', c)}
+            onTagsColumnChange={(c) => onTracesConfigChange('tagsColumn', c)}
+            onServiceTagsColumnChange={(c) => onTracesConfigChange('serviceTagsColumn', c)}
+            onKindColumnChange={(c) => onTracesConfigChange('kindColumn', c)}
+            onStatusCodeColumnChange={(c) => onTracesConfigChange('statusCodeColumn', c)}
+            onStatusMessageColumnChange={(c) => onTracesConfigChange('statusMessageColumn', c)}
+            onStateColumnChange={(c) => onTracesConfigChange('stateColumn', c)}
+            onInstrumentationLibraryNameColumnChange={(c) => onTracesConfigChange('instrumentationLibraryNameColumn', c)}
+            onInstrumentationLibraryVersionColumnChange={(c) => onTracesConfigChange('instrumentationLibraryVersionColumn', c)}
+            onFlattenNestedChange={(c) => onTracesConfigChange('flattenNested', c)}
+            onEventsColumnPrefixChange={(c) => onTracesConfigChange('traceEventsColumnPrefix', c)}
+            onLinksColumnPrefixChange={(c) => onTracesConfigChange('traceLinksColumnPrefix', c)}
+          />
+          <Divider />
+          <ConfigSection title="Query settings" isCollapsible isInitiallyOpen={false}>
+            <QuerySettingsConfig
+              dialTimeout={jsonData.dialTimeout}
+              queryTimeout={jsonData.queryTimeout}
+              connMaxLifetime={jsonData.connMaxLifetime}
+              maxIdleConns={jsonData.maxIdleConns}
+              maxOpenConns={jsonData.maxOpenConns}
+              validateSql={jsonData.validateSql}
+              onDialTimeoutChange={(e) => onUpdateDatasourceJsonDataOption(props, 'dialTimeout')(e)}
+              onQueryTimeoutChange={(e) => onUpdateDatasourceJsonDataOption(props, 'queryTimeout')(e)}
+              onConnMaxLifetimeChange={(e) => onUpdateDatasourceJsonDataOption(props, 'connMaxLifetime')(e)}
+              onConnMaxIdleConnsChange={(e) => onUpdateDatasourceJsonDataOption(props, 'maxIdleConns')(e)}
+              onConnMaxOpenConnsChange={(e) => onUpdateDatasourceJsonDataOption(props, 'maxOpenConns')(e)}
+              onValidateSqlChange={(e) => onSwitchToggle('validateSql', e.currentTarget.checked)}
+            />
+          </ConfigSection>
+        </>
+      )}
+      {jsonData.signalType === 'metrics' && (
+        <>
+          <Divider />
+          <ConfigSection title="Query settings" isCollapsible isInitiallyOpen={false}>
+            <QuerySettingsConfig
+              dialTimeout={jsonData.dialTimeout}
+              queryTimeout={jsonData.queryTimeout}
+              connMaxLifetime={jsonData.connMaxLifetime}
+              maxIdleConns={jsonData.maxIdleConns}
+              maxOpenConns={jsonData.maxOpenConns}
+              validateSql={jsonData.validateSql}
+              onDialTimeoutChange={(e) => onUpdateDatasourceJsonDataOption(props, 'dialTimeout')(e)}
+              onQueryTimeoutChange={(e) => onUpdateDatasourceJsonDataOption(props, 'queryTimeout')(e)}
+              onConnMaxLifetimeChange={(e) => onUpdateDatasourceJsonDataOption(props, 'connMaxLifetime')(e)}
+              onConnMaxIdleConnsChange={(e) => onUpdateDatasourceJsonDataOption(props, 'maxIdleConns')(e)}
+              onConnMaxOpenConnsChange={(e) => onUpdateDatasourceJsonDataOption(props, 'maxOpenConns')(e)}
+              onValidateSqlChange={(e) => onSwitchToggle('validateSql', e.currentTarget.checked)}
+            />
+          </ConfigSection>
+        </>
+      )}
+
+      {/* --- MULTI-SIGNAL MODE: full Additional settings section --- */}
+      {!jsonData.signalType && (
+      <>
       <Divider />
       <ConfigSection
         title="Additional settings"
@@ -699,6 +833,8 @@ export const ConfigEditor: React.FC<ConfigEditorProps> = (props) => {
           </Button>
         </ConfigSubSection>
       </ConfigSection>
+      </>
+      )}
     </>
   );
 };

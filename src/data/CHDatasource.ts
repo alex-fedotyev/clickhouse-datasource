@@ -1166,6 +1166,10 @@ export class Datasource
     return value;
   }
 
+  getSignalType(): import('types/config').SignalType | undefined {
+    return this.settings.jsonData.signalType;
+  }
+
   getDefaultDatabase(): string {
     return this.settings.jsonData.defaultDatabase || 'default';
   }
@@ -1329,6 +1333,16 @@ export class Datasource
    */
   async fetchUniqueMapKeys(mapColumn: string, db: string, table: string): Promise<string[]> {
     const rawSql = `SELECT DISTINCT arrayJoin(${mapColumn}.keys) as keys FROM "${db}"."${table}" LIMIT 1000`;
+    return this.fetchData(rawSql);
+  }
+
+  async fetchDistinctValues(column: string, db: string, table: string, limit = 200): Promise<string[]> {
+    const rawSql = `SELECT DISTINCT "${column}" FROM "${db}"."${table}" LIMIT ${limit}`;
+    return this.fetchData(rawSql);
+  }
+
+  async fetchDistinctMapValues(column: string, mapKey: string, db: string, table: string, limit = 200): Promise<string[]> {
+    const rawSql = `SELECT DISTINCT ${column}['${mapKey}'] as val FROM "${db}"."${table}" WHERE val != '' LIMIT ${limit}`;
     return this.fetchData(rawSql);
   }
 

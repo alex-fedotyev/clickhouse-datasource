@@ -29,10 +29,14 @@ const getStyles = (theme: GrafanaTheme2) => ({
     font-size: ${theme.typography.bodySmall.fontSize};
     font-family: ${theme.typography.fontFamilyMonospace};
     color: ${theme.colors.text.primary};
-    max-width: 320px;
+    max-width: 400px;
+    white-space: nowrap;
+  `,
+  tagContent: css`
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    min-width: 0;
   `,
   tagKey: css`
     color: ${theme.colors.primary.text};
@@ -100,9 +104,11 @@ export const FilterTagBar = (props: FilterTagBarProps) => {
   const { filters, onRemoveFilter } = props;
   const styles = useStyles2(getStyles);
 
-  // Don't render for the default placeholder filter
+  // Don't render placeholder filters or time range filters (time picker handles those)
   const activeFilters = filters.filter(
-    (f) => f.operator !== FilterOperator.IsAnything || f.key !== ''
+    (f) => (f.operator !== FilterOperator.IsAnything || f.key !== '') &&
+           f.operator !== FilterOperator.WithInGrafanaTimeRange &&
+           f.operator !== FilterOperator.OutsideGrafanaTimeRange
   );
 
   if (activeFilters.length === 0) {
@@ -116,6 +122,10 @@ export const FilterTagBar = (props: FilterTagBarProps) => {
         if (filter.operator === FilterOperator.IsAnything && !filter.key) {
           return null;
         }
+        if (filter.operator === FilterOperator.WithInGrafanaTimeRange ||
+            filter.operator === FilterOperator.OutsideGrafanaTimeRange) {
+          return null;
+        }
         const name = getFilterDisplayName(filter);
         const op = getOperatorDisplay(filter.operator);
         const value = getFilterDisplayValue(filter);
@@ -123,12 +133,14 @@ export const FilterTagBar = (props: FilterTagBarProps) => {
         return (
           <Tooltip key={index} content={`${name} ${op} ${value}`.trim()} placement="top">
             <span className={styles.tag}>
-              {index > 0 && filters[index].condition && (
-                <span className={styles.tagOperator}>{filters[index].condition} </span>
-              )}
-              <span className={styles.tagKey}>{name}</span>
-              <span className={styles.tagOperator}> {op} </span>
-              {value && <span className={styles.tagValue}>{value}</span>}
+              <span className={styles.tagContent}>
+                {index > 0 && filters[index].condition && (
+                  <span className={styles.tagOperator}>{filters[index].condition} </span>
+                )}
+                <span className={styles.tagKey}>{name}</span>
+                <span className={styles.tagOperator}> {op} </span>
+                {value && <span className={styles.tagValue}>{value}</span>}
+              </span>
               <span className={styles.removeBtn} onClick={() => onRemoveFilter(index)} role="button" tabIndex={0}>
                 <Icon name="times" size="sm" />
               </span>

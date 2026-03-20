@@ -1,6 +1,6 @@
-import React, { useMemo } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { Datasource } from 'data/CHDatasource';
-import { QueryType, QueryBuilderOptions, ColumnHint, StringFilter } from 'types/queryBuilder';
+import { QueryType, QueryBuilderOptions, ColumnHint, StringFilter, BuilderMode, FilterOperator, DateFilterWithoutValue } from 'types/queryBuilder';
 import { CoreApp } from '@grafana/data';
 import { LogsQueryBuilder } from './views/LogsQueryBuilder';
 import { TimeSeriesQueryBuilder } from './views/TimeSeriesQueryBuilder';
@@ -13,6 +13,7 @@ import { TraceQueryBuilder } from './views/TraceQueryBuilder';
 import { QueryStarter } from './QueryStarter';
 import {
   BuilderOptionsReducerAction,
+  setAllOptions,
   setBuilderMinimized,
   setDatabase,
   setQueryType,
@@ -22,6 +23,11 @@ import TraceIdInput from './TraceIdInput';
 import { Alert, Button, VerticalGroup } from '@grafana/ui';
 import { Components as allSelectors } from 'selectors';
 import allLabels from 'labels';
+import { CompactModeBar, CompactMode, getDefaultCompactMode } from './CompactModeBar';
+import { CompactFilterBar } from './CompactFilterBar';
+import { CompactAdvanced } from './CompactAdvanced';
+import useColumns from 'hooks/useColumns';
+import otel from 'otel';
 
 interface QueryBuilderProps {
   app: CoreApp | undefined;
@@ -29,10 +35,13 @@ interface QueryBuilderProps {
   builderOptionsDispatch: React.Dispatch<BuilderOptionsReducerAction>;
   datasource: Datasource;
   generatedSql: string;
+  onSwitchToSql?: () => void;
+  onQueryChange?: (builderOptions: QueryBuilderOptions) => void;
 }
 
 export const QueryBuilder = (props: QueryBuilderProps) => {
-  const { datasource, builderOptions, builderOptionsDispatch, generatedSql } = props;
+  const { datasource, builderOptions, builderOptionsDispatch, generatedSql, onSwitchToSql, onQueryChange } = props;
+  const signalType = datasource.getSignalType();
 
   const onDatabaseChange = (database: string) => builderOptionsDispatch(setDatabase(database));
   const onTableChange = (table: string) => builderOptionsDispatch(setTable(table));
@@ -48,14 +57,41 @@ export const QueryBuilder = (props: QueryBuilderProps) => {
     );
   }
 
-  // T4.1: Show the landing page when user hasn't configured a query yet
-  // (default state: Table type, no columns selected, no filters added)
-  const isDefaultState = 
+  // Determine if this is a default/empty state
+  const isDefaultState =
     builderOptions.queryType === QueryType.Table &&
     (!builderOptions.columns || builderOptions.columns.length === 0) &&
     (!builderOptions.filters || builderOptions.filters.length === 0) &&
     (!builderOptions.aggregates || builderOptions.aggregates.length === 0);
 
+  // --- COMPACT MODE (signalType configured) ---
+  if (signalType) {
+    // Detect mismatch: carried-over query from a different datasource/signal
+    const expectedQueryType = signalType === 'logs' ? QueryType.Logs
+      : signalType === 'traces' ? QueryType.Traces
+      : signalType === 'metrics' ? QueryType.TimeSeries
+      : undefined;
+    const needsReinit = isDefaultState
+      || (expectedQueryType && builderOptions.queryType !== expectedQueryType);
+
+    return (
+      <CompactQueryEditor
+        key={datasource.uid}
+        datasource={datasource}
+        builderOptions={builderOptions}
+        builderOptionsDispatch={builderOptionsDispatch}
+        generatedSql={generatedSql}
+        signalType={signalType}
+        onSwitchToSql={onSwitchToSql}
+        autoStart={needsReinit}
+        onQueryChange={onQueryChange}
+      />
+    );
+  }
+
+  // --- MULTI-SIGNAL MODE ---
+
+  // Landing page when user hasn't configured a query yet
   if (isDefaultState) {
     return (
       <div data-testid="query-editor-section-builder">
@@ -69,11 +105,12 @@ export const QueryBuilder = (props: QueryBuilderProps) => {
           />
         </div>
         <QueryStarter datasource={datasource} builderOptionsDispatch={builderOptionsDispatch} />
-        <SqlPreview sql={generatedSql} />
+        <SqlPreview sql={generatedSql} onSwitchToSql={onSwitchToSql} />
       </div>
     );
   }
 
+  // Full builder for multi-signal after query type is chosen
   return (
     <div data-testid="query-editor-section-builder">
       <div className={'gf-form ' + styles.QueryEditor.queryType}>
@@ -118,10 +155,182 @@ export const QueryBuilder = (props: QueryBuilderProps) => {
         />
       )}
 
-      <SqlPreview sql={generatedSql} />
+      <SqlPreview sql={generatedSql} onSwitchToSql={onSwitchToSql} />
     </div>
   );
 };
+
+// --- Compact Query Editor (focused signal mode) ---
+
+interface CompactQueryEditorProps {
+  datasource: Datasource;
+  builderOptions: QueryBuilderOptions;
+  builderOptionsDispatch: React.Dispatch<BuilderOptionsReducerAction>;
+  generatedSql: string;
+  signalType: import('types/config').SignalType;
+  onSwitchToSql?: () => void;
+  autoStart?: boolean;
+  onQueryChange?: (builderOptions: QueryBuilderOptions) => void;
+}
+
+const CompactQueryEditor = (props: CompactQueryEditorProps) => {
+  const { datasource, builderOptions, builderOptionsDispatch, generatedSql, signalType, onSwitchToSql, autoStart, onQueryChange } = props;
+
+  const defaultMode = getDefaultCompactMode(signalType, datasource);
+  const [mode, setMode] = useState<CompactMode | undefined>(defaultMode);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const allColumns = useColumns(datasource, builderOptions.database || '', builderOptions.table || '');
+
+  // Auto-start: initialize builder options for the signal type
+  const handleStart = useCallback((m: CompactMode) => {
+    const defaultDb = datasource.getDefaultDatabase() || '';
+    let newOptions: QueryBuilderOptions | undefined;
+
+    if (m === 'otel-logs') {
+      const logsDb = datasource.getDefaultLogsDatabase() || defaultDb;
+      const logsTable = datasource.getDefaultLogsTable() || '';
+      const otelVersion = datasource.getLogsOtelVersion();
+      const otelConfig = otelVersion ? otel.getVersion(otelVersion) : undefined;
+      const columnMap = otelConfig?.logColumnMap;
+      const columns = columnMap ? Array.from(columnMap, ([hint, name]) => ({ name, hint })) : [];
+
+      newOptions = {
+        database: logsDb,
+        table: logsTable,
+        queryType: QueryType.Logs,
+        mode: BuilderMode.List,
+        columns,
+        filters: [{
+          type: 'datetime',
+          operator: FilterOperator.WithInGrafanaTimeRange,
+          filterType: 'custom',
+          key: '',
+          hint: ColumnHint.FilterTime,
+          condition: 'AND',
+        } as DateFilterWithoutValue],
+        orderBy: [],
+        meta: {
+          otelEnabled: Boolean(otelVersion),
+          otelVersion: otelVersion || undefined,
+        },
+      };
+    } else if (m === 'otel-traces') {
+      const tracesDb = datasource.getDefaultTraceDatabase() || defaultDb;
+      const tracesTable = datasource.getDefaultTraceTable() || '';
+      const otelVersion = datasource.getTraceOtelVersion();
+      const otelConfig = otelVersion ? otel.getVersion(otelVersion) : undefined;
+      const columnMap = otelConfig?.traceColumnMap;
+      const columns = columnMap ? Array.from(columnMap, ([hint, name]) => ({ name, hint })) : [];
+
+      newOptions = {
+        database: tracesDb,
+        table: tracesTable,
+        queryType: QueryType.Traces,
+        columns,
+        filters: [{
+          type: 'datetime',
+          operator: FilterOperator.WithInGrafanaTimeRange,
+          filterType: 'custom',
+          key: '',
+          hint: ColumnHint.Time,
+          condition: 'AND',
+        } as DateFilterWithoutValue],
+        orderBy: [],
+        meta: {
+          otelEnabled: Boolean(otelVersion),
+          otelVersion: otelVersion || undefined,
+          traceDurationUnit: otelConfig?.traceDurationUnit,
+          flattenNested: otelConfig?.flattenNested,
+          traceEventsColumnPrefix: otelConfig?.traceEventsColumnPrefix,
+          traceLinksColumnPrefix: otelConfig?.traceLinksColumnPrefix,
+        },
+      };
+    }
+
+    if (newOptions) {
+      builderOptionsDispatch(setAllOptions(newOptions));
+      // Directly push to Grafana's query state to avoid stale-query race
+      if (onQueryChange) {
+        onQueryChange(newOptions);
+      }
+    }
+  }, [datasource, builderOptionsDispatch, onQueryChange]);
+
+  // Auto-start synchronously on first render when signalType doesn't match query
+  // This MUST happen before the useEffect in CHEditorByType fires onChange with stale options
+  const didAutoStart = React.useRef(false);
+  if (autoStart && mode && !didAutoStart.current) {
+    didAutoStart.current = true;
+    handleStart(mode);
+  }
+
+  const onModeChange = (newMode: CompactMode) => {
+    setMode(newMode);
+    handleStart(newMode);
+  };
+
+  const searchText = builderOptions.meta?.logMessageLike || '';
+  const onSearchChange = (text: string) => {
+    builderOptionsDispatch(setAllOptions({
+      ...builderOptions,
+      meta: { ...builderOptions.meta, logMessageLike: text },
+    }));
+  };
+
+  const handleSwitchToSql = () => {
+    if (onSwitchToSql) {
+      onSwitchToSql();
+    }
+  };
+
+  return (
+    <div data-testid="query-editor-compact">
+      <CompactModeBar
+        datasource={datasource}
+        signalType={signalType}
+        mode={mode}
+        onModeChange={onModeChange}
+        searchText={searchText}
+        onSearchChange={onSearchChange}
+        onSearchSubmit={() => {}}
+        onSwitchToSql={handleSwitchToSql}
+        onToggleAdvanced={() => setAdvancedOpen(!advancedOpen)}
+        advancedOpen={advancedOpen}
+      />
+
+      <CompactFilterBar
+        datasource={datasource}
+        database={builderOptions.database || ''}
+        table={builderOptions.table || ''}
+        filters={builderOptions.filters || []}
+        allColumns={allColumns}
+        onFiltersChange={(filters) => {
+          builderOptionsDispatch(setAllOptions({
+            ...builderOptions,
+            filters,
+          }));
+        }}
+      />
+
+      {advancedOpen && (
+        <CompactAdvanced
+          builderOptions={builderOptions}
+          allColumns={allColumns}
+          onOrderByChange={(orderBy) => {
+            builderOptionsDispatch(setAllOptions({ ...builderOptions, orderBy }));
+          }}
+          onLimitChange={(limit) => {
+            builderOptionsDispatch(setAllOptions({ ...builderOptions, limit }));
+          }}
+        />
+      )}
+
+      <SqlPreview sql={generatedSql} onSwitchToSql={handleSwitchToSql} />
+    </div>
+  );
+};
+
+// --- Minimized Query Viewer (existing, for trace ID mode) ---
 
 interface MinimizedQueryBuilder {
   builderOptions: QueryBuilderOptions;

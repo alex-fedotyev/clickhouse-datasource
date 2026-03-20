@@ -2,11 +2,19 @@ import { DataSourceJsonData, KeyValue } from '@grafana/data';
 import otel, { defaultLogsTable, defaultTraceTable } from 'otel';
 import { TimeUnit } from './queryBuilder';
 
+export type SignalType = 'logs' | 'traces' | 'metrics';
+
 export interface CHConfig extends DataSourceJsonData {
   /**
    * The version of the plugin this config was saved with
    */
   version: string;
+
+  /**
+   * Optional single-signal mode. When set, the datasource shows a focused UI
+   * for this signal type only (no db/table/queryType pickers).
+   */
+  signalType?: SignalType;
 
   host: string;
   port: number;

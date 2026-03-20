@@ -1,11 +1,12 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { css } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
-import { Button, useStyles2, Tooltip, ClipboardButton } from '@grafana/ui';
+import { Button, useStyles2, Tooltip, ClipboardButton, Icon } from '@grafana/ui';
 
 interface SqlPreviewProps {
   sql: string;
   onSwitchToSql?: () => void;
+  defaultOpen?: boolean;
 }
 
 const getStyles = (theme: GrafanaTheme2) => ({
@@ -21,13 +22,32 @@ const getStyles = (theme: GrafanaTheme2) => ({
     justify-content: space-between;
     align-items: center;
     padding: ${theme.spacing(0.5)} ${theme.spacing(1)};
-    border-bottom: 1px solid ${theme.colors.border.weak};
     background: ${theme.colors.background.primary};
+    cursor: pointer;
+    user-select: none;
+    &:hover {
+      background: ${theme.colors.background.secondary};
+    }
+  `,
+  headerOpen: css`
+    border-bottom: 1px solid ${theme.colors.border.weak};
+  `,
+  headerLeft: css`
+    display: flex;
+    align-items: center;
+    gap: ${theme.spacing(0.5)};
   `,
   headerLabel: css`
     font-size: ${theme.typography.bodySmall.fontSize};
     color: ${theme.colors.text.secondary};
     font-weight: ${theme.typography.fontWeightMedium};
+  `,
+  chevron: css`
+    color: ${theme.colors.text.secondary};
+    transition: transform 0.15s ease;
+  `,
+  chevronOpen: css`
+    transform: rotate(90deg);
   `,
   actions: css`
     display: flex;
@@ -48,7 +68,8 @@ const getStyles = (theme: GrafanaTheme2) => ({
 });
 
 export const SqlPreview = (props: SqlPreviewProps) => {
-  const { sql, onSwitchToSql } = props;
+  const { sql, onSwitchToSql, defaultOpen = false } = props;
+  const [isOpen, setIsOpen] = useState(defaultOpen);
   const styles = useStyles2(getStyles);
 
   if (!sql) {
@@ -57,9 +78,22 @@ export const SqlPreview = (props: SqlPreviewProps) => {
 
   return (
     <div className={styles.wrapper}>
-      <div className={styles.header}>
-        <span className={styles.headerLabel}>Generated SQL</span>
-        <div className={styles.actions}>
+      <div
+        className={`${styles.header} ${isOpen ? styles.headerOpen : ''}`}
+        onClick={() => setIsOpen(!isOpen)}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { setIsOpen(!isOpen); } }}
+      >
+        <div className={styles.headerLeft}>
+          <Icon
+            name="angle-right"
+            size="md"
+            className={`${styles.chevron} ${isOpen ? styles.chevronOpen : ''}`}
+          />
+          <span className={styles.headerLabel}>SQL</span>
+        </div>
+        <div className={styles.actions} onClick={(e) => e.stopPropagation()}>
           <ClipboardButton
             icon="copy"
             variant="secondary"
@@ -84,7 +118,7 @@ export const SqlPreview = (props: SqlPreviewProps) => {
           )}
         </div>
       </div>
-      <pre className={styles.sqlBlock}>{sql}</pre>
+      {isOpen && <pre className={styles.sqlBlock}>{sql}</pre>}
     </div>
   );
 };

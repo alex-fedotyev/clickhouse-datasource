@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { css } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
-import { useStyles2, Icon, Spinner } from '@grafana/ui';
+import { useStyles2, Icon } from '@grafana/ui';
 import { Datasource } from 'data/CHDatasource';
 import { QueryType, BuilderMode, ColumnHint, FilterOperator, DateFilterWithoutValue } from 'types/queryBuilder';
 import {
