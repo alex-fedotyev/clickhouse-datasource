@@ -381,10 +381,61 @@
         ]
       },
       "gridPos": {
-        "h": 12,
+        "h": 10,
         "w": 24,
         "x": 0,
         "y": 10
+      },
+      "id": 40,
+      "options": {},
+      "title": "Service Map",
+      "type": "nodeGraph",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "${datasource}"
+          },
+          "editorType": "sql",
+          "rawSql": "SELECT ServiceName AS id, ServiceName AS title, concat(toString(count()), ' req') AS mainstat, concat(toString(round(avg(Duration) / 1000000, 1)), ' ms avg') AS secondarystat, (count() - countIf(StatusCode = 'STATUS_CODE_ERROR')) / count() AS arc__success, countIf(StatusCode = 'STATUS_CODE_ERROR') / count() AS arc__errors FROM otel_traces WHERE $__timeFilter(Timestamp) AND $__conditionalAll(ServiceName IN ($service), $service) AND $__conditionalAll(SpanName IN ($operation), $operation) GROUP BY ServiceName ORDER BY count() DESC LIMIT 30",
+          "refId": "nodes",
+          "format": 1,
+          "meta": {
+            "builderOptions": {
+              "database": "",
+              "table": "",
+              "queryType": "table",
+              "columns": [],
+              "mode": "list",
+              "limit": 1000
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "arc__success" },
+            "properties": [
+              { "id": "color", "value": { "mode": "fixed", "fixedColor": "green" } }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "arc__errors" },
+            "properties": [
+              { "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "gridPos": {
+        "h": 12,
+        "w": 24,
+        "x": 0,
+        "y": 20
       },
       "id": 20,
       "options": {
@@ -529,7 +580,7 @@
         "h": 7,
         "w": 24,
         "x": 0,
-        "y": 22
+        "y": 32
       },
       "id": 30,
       "options": {
