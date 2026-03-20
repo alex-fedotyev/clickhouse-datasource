@@ -48,9 +48,15 @@ export const QueryBuilder = (props: QueryBuilderProps) => {
     );
   }
 
-  // T4.1: Show the "What do you want to query?" landing page when no table is selected
-  const showStarter = !builderOptions.table;
-  if (showStarter) {
+  // T4.1: Show the landing page when user hasn't configured a query yet
+  // (default state: Table type, no columns selected, no filters added)
+  const isDefaultState = 
+    builderOptions.queryType === QueryType.Table &&
+    (!builderOptions.columns || builderOptions.columns.length === 0) &&
+    (!builderOptions.filters || builderOptions.filters.length === 0) &&
+    (!builderOptions.aggregates || builderOptions.aggregates.length === 0);
+
+  if (isDefaultState) {
     return (
       <div data-testid="query-editor-section-builder">
         <div className={'gf-form ' + styles.QueryEditor.queryType}>
@@ -63,6 +69,7 @@ export const QueryBuilder = (props: QueryBuilderProps) => {
           />
         </div>
         <QueryStarter datasource={datasource} builderOptionsDispatch={builderOptionsDispatch} />
+        <SqlPreview sql={generatedSql} />
       </div>
     );
   }

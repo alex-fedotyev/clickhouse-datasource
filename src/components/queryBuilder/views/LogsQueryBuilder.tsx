@@ -48,6 +48,7 @@ export const LogsQueryBuilder = (props: LogsQueryBuilderProps) => {
   const labels = allLabels.components.LogsQueryBuilder;
   const allColumns = useColumns(datasource, builderOptions.database, builderOptions.table);
   const isNewQuery = useIsNewQuery(builderOptions);
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const builderState: LogsQueryBuilderState = useMemo(
     () => ({
       otelEnabled: builderOptions.meta?.otelEnabled || false,
@@ -127,6 +128,96 @@ export const LogsQueryBuilder = (props: LogsQueryBuilderProps) => {
       </VerticalGroup>
     </Alert>
   );
+
+  // T4.2: Progressive disclosure — when OTEL is enabled, show simplified view
+  if (builderState.otelEnabled) {
+    return (
+      <div>
+        {configWarning}
+        <LogMessageLikeInput logMessageLike={builderState.logMessageLike} onChange={onOptionChange('logMessageLike')} />
+        <FiltersEditor
+          filters={builderState.filters}
+          onFiltersChange={onOptionChange('filters')}
+          allColumns={allColumns}
+          datasource={datasource}
+          database={builderOptions.database}
+          table={builderOptions.table}
+        />
+        <LimitEditor limit={builderState.limit} onLimitChange={onOptionChange('limit')} />
+        <div className="gf-form">
+          <Button
+            icon="angle-down"
+            variant="secondary"
+            size="sm"
+            fill="text"
+            onClick={() => setShowAdvanced(!showAdvanced)}
+            className={styles.Common.smallBtn}
+          >
+            {showAdvanced ? 'Hide advanced options' : 'Show columns & ordering'}
+          </Button>
+          <OtelVersionSelect
+            enabled={builderState.otelEnabled}
+            onEnabledChange={(e) => builderOptionsDispatch(setOtelEnabled(e))}
+            selectedVersion={builderState.otelVersion}
+            onVersionChange={(v) => builderOptionsDispatch(setOtelVersion(v))}
+          />
+        </div>
+        {showAdvanced && (
+          <>
+            <ColumnsEditor
+              disabled={builderState.otelEnabled}
+              allColumns={allColumns}
+              selectedColumns={builderState.selectedColumns}
+              onSelectedColumnsChange={onOptionChange('selectedColumns')}
+            />
+            <div className="gf-form">
+              <ColumnSelect
+                disabled={builderState.otelEnabled}
+                allColumns={allColumns}
+                selectedColumn={builderState.timeColumn}
+                invalid={!builderState.timeColumn}
+                onColumnChange={onOptionChange('timeColumn')}
+                columnFilterFn={columnFilterDateTime}
+                columnHint={ColumnHint.Time}
+                label={labels.logTimeColumn.label}
+                tooltip={labels.logTimeColumn.tooltip}
+              />
+              <ColumnSelect
+                disabled={builderState.otelEnabled}
+                allColumns={allColumns}
+                selectedColumn={builderState.logLevelColumn}
+                invalid={!builderState.logLevelColumn}
+                onColumnChange={onOptionChange('logLevelColumn')}
+                columnFilterFn={columnFilterString}
+                columnHint={ColumnHint.LogLevel}
+                label={labels.logLevelColumn.label}
+                tooltip={labels.logLevelColumn.tooltip}
+                inline
+              />
+            </div>
+            <div className="gf-form">
+              <ColumnSelect
+                disabled={builderState.otelEnabled}
+                allColumns={allColumns}
+                selectedColumn={builderState.messageColumn}
+                invalid={!builderState.messageColumn}
+                onColumnChange={onOptionChange('messageColumn')}
+                columnFilterFn={columnFilterString}
+                columnHint={ColumnHint.LogMessage}
+                label={labels.logMessageColumn.label}
+                tooltip={labels.logMessageColumn.tooltip}
+              />
+            </div>
+            <OrderByEditor
+              orderByOptions={getOrderByOptions(builderOptions, allColumns)}
+              orderBy={builderState.orderBy}
+              onOrderByChange={onOptionChange('orderBy')}
+            />
+          </>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div>

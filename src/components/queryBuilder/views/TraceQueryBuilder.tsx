@@ -69,7 +69,7 @@ export const TraceQueryBuilder = (props: TraceQueryBuilderProps) => {
   const [showConfigWarning, setConfigWarningOpen] = useState(
     datasource.getDefaultTraceColumns().size === 0 && builderOptions.columns?.length === 0
   );
-  const [isColumnsOpen, setColumnsOpen] = useState<boolean>(showConfigWarning); // Toggle Columns collapse section
+  const [isColumnsOpen, setColumnsOpen] = useState<boolean>(showConfigWarning && !builderOptions.meta?.otelEnabled); // Toggle Columns collapse section
   const [isFiltersOpen, setFiltersOpen] = useState<boolean>(
     !(builderOptions.meta?.isTraceIdMode && builderOptions.meta.traceId)
   ); // Toggle Filters collapse section
