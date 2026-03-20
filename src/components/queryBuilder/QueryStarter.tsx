@@ -3,7 +3,7 @@ import { css } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
 import { useStyles2, Icon, Spinner } from '@grafana/ui';
 import { Datasource } from 'data/CHDatasource';
-import { QueryType, BuilderMode } from 'types/queryBuilder';
+import { QueryType, BuilderMode, ColumnHint, FilterOperator, DateFilterWithoutValue } from 'types/queryBuilder';
 import {
   BuilderOptionsReducerAction,
   setAllOptions,
@@ -117,13 +117,24 @@ export const QueryStarter = (props: QueryStarterProps) => {
     const columnMap = queryType === QueryType.Logs ? otelConfig?.logColumnMap : otelConfig?.traceColumnMap;
     const columns = columnMap ? Array.from(columnMap, ([hint, name]) => ({ name, hint })) : [];
 
+    // Add default time range filter so queries include WHERE $__timeFilter
+    const timeHint = queryType === QueryType.Logs ? ColumnHint.FilterTime : ColumnHint.Time;
+    const defaultFilters = [{
+      type: 'datetime',
+      operator: FilterOperator.WithInGrafanaTimeRange,
+      filterType: 'custom',
+      key: '',
+      hint: timeHint,
+      condition: 'AND',
+    } as DateFilterWithoutValue];
+
     builderOptionsDispatch(setAllOptions({
       database: database || defaultDb,
       table,
       queryType,
       mode: mode || (queryType === QueryType.Logs ? BuilderMode.List : undefined),
       columns,
-      filters: [],
+      filters: defaultFilters,
       orderBy: [],
       meta: {
         otelEnabled: Boolean(otelVersion),

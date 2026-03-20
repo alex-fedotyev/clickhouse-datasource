@@ -412,7 +412,7 @@
             "uid": "${datasource}"
           },
           "editorType": "sql",
-          "rawSql": "SELECT TraceId, any(ServiceName) AS Service, any(SpanName) AS RootOperation, min(Timestamp) AS Time, max(Duration) AS Duration, count() AS Spans, anyIf(StatusCode, StatusCode = 'STATUS_CODE_ERROR') AS Status FROM otel_traces WHERE $__timeFilter(Timestamp) AND $__conditionalAll(ServiceName IN ($service), $service) AND $__conditionalAll(SpanName IN ($operation), $operation) AND $__conditionalAll(StatusCode IN ($status), $status) AND $__conditionalAll(Duration >= toUInt64($min_duration) * 1000000, $min_duration) GROUP BY TraceId ORDER BY Time DESC LIMIT 200",
+          "rawSql": "SELECT TraceId, any(ServiceName) AS Service, any(SpanName) AS RootOperation, min(Timestamp) AS Time, max(Duration) AS Duration, count() AS Spans, anyIf(StatusCode, StatusCode = 'STATUS_CODE_ERROR') AS Status FROM otel_traces WHERE $__timeFilter(Timestamp) AND $__conditionalAll(ServiceName IN ($service), $service) AND $__conditionalAll(SpanName IN ($operation), $operation) AND $__conditionalAll(StatusCode IN ($status), $status) GROUP BY TraceId HAVING $__conditionalAll(max(Duration) >= toUInt64($min_duration) * 1000000, $min_duration) ORDER BY Time DESC LIMIT 200",
           "refId": "A",
           "format": 1
         }
@@ -635,8 +635,8 @@
       {
         "current": {
           "selected": false,
-          "text": "0",
-          "value": "0"
+          "text": "",
+          "value": ""
         },
         "hide": 0,
         "label": "Min Duration (ms)",
@@ -644,11 +644,11 @@
         "options": [
           {
             "selected": true,
-            "text": "0",
-            "value": "0"
+            "text": "",
+            "value": ""
           }
         ],
-        "query": "0",
+        "query": "",
         "type": "textbox"
       }
     ]
