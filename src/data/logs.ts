@@ -49,22 +49,7 @@ export function queryLogsVolume<TQuery extends DataQuery, TOptions extends DataS
             custom: {
               targets: options.targets,
               absoluteRange: { from: options.range.from.valueOf(), to: options.range.to.valueOf() },
-              logsVolumeType: 'FullRange',
-              datasourceName: datasource.name,
-              sourceQuery: options.targets[0],
             },
-          };
-        }
-        // Apply metadata to all volume frames for proper rendering
-        for (const frame of aggregatedLogsVolume) {
-          if (!frame.meta) {
-            frame.meta = {};
-          }
-          frame.meta.custom = {
-            ...frame.meta.custom,
-            logsVolumeType: 'FullRange',
-            datasourceName: datasource.name,
-            sourceQuery: options.targets[0],
           };
         }
         observer.next({
