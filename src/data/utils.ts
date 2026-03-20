@@ -642,10 +642,9 @@ export const transformQueryResponseWithTraceAndLogLinks = (
     }
   });
 
-  // T2.1: Service map Node Graph frames disabled — was causing stack overflow
-  // when Grafana deep-clones frames with plain array values fields.
-  // TODO: Re-enable with proper Vector wrapper for field values.
-  /*
+  // T2.1: Service map Node Graph frames from trace search results.
+  // Generates nodes per service with request count, avg duration, and error arc.
+  // Safe: generated frames have no traceID field, so the data link loop above skips them.
   res.data.forEach((frame: DataFrame) => {
     const originalQuery = req.targets.find((t) => t.refId === frame.refId) as CHBuilderQuery;
     if (!originalQuery || originalQuery.editorType !== EditorType.Builder) {
@@ -662,7 +661,6 @@ export const transformQueryResponseWithTraceAndLogLinks = (
       }
     }
   });
-  */
 
   return res;
 };
