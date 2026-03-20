@@ -343,14 +343,10 @@ export class Datasource
    * returns sample log lines matching the same filters.
    */
   getSupplementaryQuery(options: SupplementaryQueryOptions, originalQuery: CHQuery): CHQuery | undefined {
-    if (options.type === SupplementaryQueryType.LogsVolume) {
-      return this._getLogsVolumeSupplementaryQuery(originalQuery);
-    }
-
-    if (options.type === SupplementaryQueryType.LogsSample) {
-      return this._getLogsSampleSupplementaryQuery(originalQuery);
-    }
-
+    // Temporarily disabled — supplementary queries go through query() which runs
+    // transformQueryResponseWithTraceAndLogLinks, adding data link objects that
+    // cause Grafana's structuredClone to stack overflow during frame processing.
+    // TODO: Fix by ensuring supplementary query responses skip data link enrichment.
     return undefined;
   }
 

@@ -452,8 +452,9 @@ export const transformQueryResponseWithTraceAndLogLinks = (
     // Use traces config traceIdColumn if available, otherwise fallback to logs default
     const traceIdColumnName = datasource.getTracesTraceIdColumn() || defaultLogsColumns.get(ColumnHint.TraceId) || 'TraceId';
 
+    const dsRef = { uid: datasource.uid, type: datasource.type };
     const traceIdQuery: CHBuilderQuery = {
-      datasource: datasource,
+      datasource: dsRef,
       editorType: EditorType.Builder,
       /**
        * Evil bug:
@@ -526,7 +527,7 @@ export const transformQueryResponseWithTraceAndLogLinks = (
     }
 
     const traceLogsQuery: CHBuilderQuery = {
-      datasource: datasource,
+      datasource: dsRef,
       editorType: EditorType.Builder,
       rawSql: '',
       builderOptions: {} as QueryBuilderOptions,
@@ -605,6 +606,10 @@ export const transformQueryResponseWithTraceAndLogLinks = (
     } else {
       traceLogsQuery.rawSql = '';
     }
+    // JSON round-trip to strip circular references and class instances.
+    // Grafana's L() deep-clone function recurses infinitely on non-plain objects.
+    const safeClone = (obj: any) => JSON.parse(JSON.stringify(obj));
+
     traceField.config.links = [];
     if (datasource.settings.jsonData.traces?.showTraceLinks !== false) {
       traceField.config.links!.push({
@@ -612,9 +617,9 @@ export const transformQueryResponseWithTraceAndLogLinks = (
         targetBlank: openInNewWindow,
         url: '',
         internal: {
-          query: traceIdQuery,
-          datasourceUid: traceIdQuery.datasource?.uid!,
-          datasourceName: traceIdQuery.datasource?.type!,
+          query: safeClone(traceIdQuery),
+          datasourceUid: dsRef.uid!,
+          datasourceName: dsRef.type!,
           panelsState: {
             trace: {
               spanId: '${__value.raw}',
@@ -629,9 +634,9 @@ export const transformQueryResponseWithTraceAndLogLinks = (
         targetBlank: openInNewWindow,
         url: '',
         internal: {
-          query: traceLogsQuery,
-          datasourceUid: traceLogsQuery.datasource?.uid!,
-          datasourceName: traceLogsQuery.datasource?.type!,
+          query: safeClone(traceLogsQuery),
+          datasourceUid: dsRef.uid!,
+          datasourceName: dsRef.type!,
         },
       });
     }
