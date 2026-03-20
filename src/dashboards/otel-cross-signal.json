@@ -95,7 +95,7 @@
   "templating": {
     "list": [
       { "current": {}, "hide": 0, "label": "Data Source", "name": "datasource", "query": "grafana-clickhouse-datasource", "refresh": 1, "type": "datasource" },
-      { "datasource": { "type": "grafana-clickhouse-datasource", "uid": "${datasource}" }, "hide": 0, "includeAll": true, "label": "Service", "multi": true, "name": "service", "query": { "editorType": "sql", "rawSql": "SELECT DISTINCT ServiceName FROM otel_traces WHERE $__timeFilter(Timestamp) ORDER BY ServiceName" }, "refresh": 2, "sort": 1, "type": "query", "allValue": "" },
+      { "datasource": { "type": "grafana-clickhouse-datasource", "uid": "${datasource}" }, "hide": 0, "includeAll": true, "label": "Service", "multi": true, "name": "service", "query": { "editorType": "sql", "rawSql": "SELECT DISTINCT ServiceName FROM otel_traces WHERE $__timeFilter(Timestamp) ORDER BY ServiceName" }, "refresh": 2, "sort": 1, "type": "query", "allValue": null },
       { "current": { "selected": false, "text": "", "value": "" }, "hide": 0, "label": "Trace ID", "name": "traceId", "options": [{ "selected": true, "text": "", "value": "" }], "query": "", "type": "textbox" }
     ]
   },

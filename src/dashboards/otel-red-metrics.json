@@ -72,7 +72,7 @@
     "list": [
       { "current": {}, "hide": 0, "label": "Data Source", "name": "datasource", "query": "grafana-clickhouse-datasource", "refresh": 1, "type": "datasource" },
       { "datasource": { "type": "grafana-clickhouse-datasource", "uid": "${datasource}" }, "hide": 0, "includeAll": false, "label": "Service", "name": "service", "query": { "editorType": "sql", "rawSql": "SELECT DISTINCT ServiceName FROM otel_traces WHERE $__timeFilter(Timestamp) ORDER BY ServiceName" }, "refresh": 2, "sort": 1, "type": "query" },
-      { "datasource": { "type": "grafana-clickhouse-datasource", "uid": "${datasource}" }, "hide": 0, "includeAll": true, "label": "Operation", "name": "operation", "query": { "editorType": "sql", "rawSql": "SELECT DISTINCT SpanName FROM otel_traces WHERE $__timeFilter(Timestamp) AND ServiceName = '${service}' ORDER BY SpanName" }, "refresh": 2, "sort": 1, "type": "query", "allValue": "" }
+      { "datasource": { "type": "grafana-clickhouse-datasource", "uid": "${datasource}" }, "hide": 0, "includeAll": true, "label": "Operation", "name": "operation", "query": { "editorType": "sql", "rawSql": "SELECT DISTINCT SpanName FROM otel_traces WHERE $__timeFilter(Timestamp) AND ServiceName = '${service}' ORDER BY SpanName" }, "refresh": 2, "sort": 1, "type": "query", "allValue": null }
     ]
   },
   "time": { "from": "now-1h", "to": "now" },

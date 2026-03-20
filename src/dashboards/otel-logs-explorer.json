@@ -407,7 +407,7 @@
         "refresh": 2,
         "sort": 1,
         "type": "query",
-        "allValue": ""
+        "allValue": null
       },
       {
         "datasource": {
@@ -426,7 +426,7 @@
         "refresh": 2,
         "sort": 1,
         "type": "query",
-        "allValue": ""
+        "allValue": null
       },
       {
         "current": {

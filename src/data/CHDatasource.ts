@@ -343,10 +343,14 @@ export class Datasource
    * returns sample log lines matching the same filters.
    */
   getSupplementaryQuery(options: SupplementaryQueryOptions, originalQuery: CHQuery): CHQuery | undefined {
-    // Temporarily disabled — supplementary queries go through query() which runs
-    // transformQueryResponseWithTraceAndLogLinks, adding data link objects that
-    // cause Grafana's structuredClone to stack overflow during frame processing.
-    // TODO: Fix by ensuring supplementary query responses skip data link enrichment.
+    if (options.type === SupplementaryQueryType.LogsVolume) {
+      return this._getLogsVolumeSupplementaryQuery(originalQuery);
+    }
+
+    if (options.type === SupplementaryQueryType.LogsSample) {
+      return this._getLogsSampleSupplementaryQuery(originalQuery);
+    }
+
     return undefined;
   }
 
@@ -1532,15 +1536,21 @@ export class Datasource
         ...request,
         targets,
       })
-      .pipe(
-        map((res: DataQueryResponse) => {
-          const transformed = transformQueryResponseWithTraceAndLogLinks(this, request, res);
+        // Skip data link enrichment for supplementary queries (log volume, log sample).
+        // These go through Grafana's frame deep-clone which stack-overflows on the
+        // data link query objects. hideFromInspector is set by getDataProvider().
+        if (request.hideFromInspector) {
           if (hasLogsVolumeTargets) {
-            return { ...transformed, data: splitLogsVolumeFrames(transformed.data, Datasource.logVolumePrefix) };
+            return { ...res, data: splitLogsVolumeFrames(res.data, Datasource.logVolumePrefix) };
           }
-          return transformed;
-        })
-      );
+          return res;
+        }
+        const transformed = transformQueryResponseWithTraceAndLogLinks(this, request, res);
+        if (hasLogsVolumeTargets) {
+          return { ...transformed, data: splitLogsVolumeFrames(transformed.data, Datasource.logVolumePrefix) };
+        }
+        return transformed;
+      }));
   }
 
   private runQuery(request: Partial<CHQuery>, options?: any): Promise<DataFrame> {
