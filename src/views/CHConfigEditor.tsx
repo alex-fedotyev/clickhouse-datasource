@@ -11,6 +11,7 @@ import {
   CHCustomSetting,
   CHSecureConfig,
   CHLogsConfig,
+  CHMetricsConfig,
   Protocol,
   CHTracesConfig,
   AliasTableEntry,
@@ -159,6 +160,18 @@ export const ConfigEditor: React.FC<ConfigEditorProps> = (props) => {
         traces: {
           ...options.jsonData.traces,
           durationUnit: options.jsonData.traces?.durationUnit || TimeUnit.Nanoseconds,
+          [key]: value,
+        },
+      },
+    });
+  };
+  const onMetricsConfigChange = (key: keyof CHMetricsConfig, value: string | boolean) => {
+    onOptionsChange({
+      ...options,
+      jsonData: {
+        ...options.jsonData,
+        metrics: {
+          ...options.jsonData.metrics,
           [key]: value,
         },
       },
@@ -526,6 +539,38 @@ export const ConfigEditor: React.FC<ConfigEditorProps> = (props) => {
       )}
       {jsonData.signalType === 'metrics' && (
         <>
+          <Divider />
+          <ConfigSection title="Metrics">
+            <Field label="Default database" description="Database containing OTEL metrics tables">
+              <Input
+                width={40}
+                value={jsonData.metrics?.defaultDatabase || ''}
+                placeholder={jsonData.defaultDatabase || 'default'}
+                onChange={(e) => onMetricsConfigChange('defaultDatabase', e.currentTarget.value)}
+              />
+            </Field>
+            <Field label="Default table" description="Default metrics table (e.g., otel_metrics_gauge)">
+              <Select
+                options={[
+                  { label: 'otel_metrics_gauge', value: 'otel_metrics_gauge' },
+                  { label: 'otel_metrics_sum', value: 'otel_metrics_sum' },
+                  { label: 'otel_metrics_histogram', value: 'otel_metrics_histogram' },
+                  { label: 'otel_metrics_summary', value: 'otel_metrics_summary' },
+                  { label: 'otel_metrics_exponential_histogram', value: 'otel_metrics_exponential_histogram' },
+                ]}
+                value={jsonData.metrics?.defaultTable || 'otel_metrics_gauge'}
+                onChange={(v) => onMetricsConfigChange('defaultTable', v.value || 'otel_metrics_gauge')}
+                width={40}
+                allowCustomValue
+              />
+            </Field>
+            <Field label="OTEL enabled" description="Enable OTEL metrics schema support">
+              <Switch
+                value={jsonData.metrics?.otelEnabled ?? true}
+                onChange={(e) => onMetricsConfigChange('otelEnabled', e.currentTarget.checked)}
+              />
+            </Field>
+          </ConfigSection>
           <Divider />
           <ConfigSection title="Query settings" isCollapsible isInitiallyOpen={false}>
             <QuerySettingsConfig

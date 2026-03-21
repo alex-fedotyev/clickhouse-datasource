@@ -5,7 +5,7 @@ import { useStyles2, Icon, Input, Select, Tooltip, Button } from '@grafana/ui';
 import { Datasource } from 'data/CHDatasource';
 import { SignalType } from 'types/config';
 
-export type CompactMode = 'otel-logs' | 'otel-traces' | 'raw-sql';
+export type CompactMode = 'otel-logs' | 'otel-traces' | 'otel-metrics' | 'raw-sql';
 
 interface CompactModeBarProps {
   datasource: Datasource;
@@ -51,6 +51,9 @@ export function getDefaultCompactMode(
   if (signalType === 'traces') {
     return 'otel-traces';
   }
+  if (signalType === 'metrics') {
+    return 'otel-metrics';
+  }
   // For multi-signal, no default — show landing page
   return undefined;
 }
@@ -61,6 +64,7 @@ export function getModeOptions(
 ): Array<{ label: string; value: CompactMode; description?: string }> {
   const hasOtelLogs = Boolean(datasource.getLogsOtelVersion() && datasource.getDefaultLogsTable());
   const hasOtelTraces = Boolean(datasource.getTraceOtelVersion() && datasource.getDefaultTraceTable());
+  const hasOtelMetrics = Boolean(datasource.getMetricsOtelVersion() && datasource.getDefaultMetricsTable());
   const options: Array<{ label: string; value: CompactMode; description?: string }> = [];
 
   if (signalType === 'logs' || (!signalType && hasOtelLogs)) {
@@ -68,6 +72,9 @@ export function getModeOptions(
   }
   if (signalType === 'traces' || (!signalType && hasOtelTraces)) {
     options.push({ label: 'OTEL Traces', value: 'otel-traces' });
+  }
+  if (signalType === 'metrics' || (!signalType && hasOtelMetrics)) {
+    options.push({ label: 'OTEL Metrics', value: 'otel-metrics' });
   }
   if (!signalType) {
     options.push({ label: 'Raw SQL', value: 'raw-sql' });
@@ -94,6 +101,7 @@ export const CompactModeBar = (props: CompactModeBarProps) => {
   const showModeDropdown = !signalType && modeOptions.length > 1;
   const isLogs = mode === 'otel-logs';
   const isTraces = mode === 'otel-traces';
+  const isMetrics = mode === 'otel-metrics';
 
   useEffect(() => {
     setLocalSearch(searchText);

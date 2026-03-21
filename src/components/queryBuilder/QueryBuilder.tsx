@@ -1,6 +1,6 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import { Datasource } from 'data/CHDatasource';
-import { QueryType, QueryBuilderOptions, ColumnHint, StringFilter, BuilderMode, FilterOperator, DateFilterWithoutValue } from 'types/queryBuilder';
+import { QueryType, QueryBuilderOptions, ColumnHint, StringFilter, BuilderMode, FilterOperator, DateFilterWithoutValue, AggregateType, OrderByDirection } from 'types/queryBuilder';
 import { CoreApp } from '@grafana/data';
 import { LogsQueryBuilder } from './views/LogsQueryBuilder';
 import { TimeSeriesQueryBuilder } from './views/TimeSeriesQueryBuilder';
@@ -26,8 +26,9 @@ import allLabels from 'labels';
 import { CompactModeBar, CompactMode, getDefaultCompactMode } from './CompactModeBar';
 import { CompactFilterBar } from './CompactFilterBar';
 import { CompactAdvanced } from './CompactAdvanced';
+import { CompactMetricsBar, MetricsBarState, getDefaultAggForTable } from './CompactMetricsBar';
 import useColumns from 'hooks/useColumns';
-import otel from 'otel';
+import otel, { defaultMetricsTable, MetricsTableType } from 'otel';
 
 interface QueryBuilderProps {
   app: CoreApp | undefined;
@@ -181,6 +182,13 @@ const CompactQueryEditor = (props: CompactQueryEditorProps) => {
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const allColumns = useColumns(datasource, builderOptions.database || '', builderOptions.table || '');
 
+  // Metrics bar state — kept in sync with builderOptions
+  const [metricsState, setMetricsState] = useState<MetricsBarState>(() => ({
+    tableType: (builderOptions.table as MetricsTableType) || (datasource.getDefaultMetricsTable() as MetricsTableType) || defaultMetricsTable,
+    metricName: '',
+    aggregateType: AggregateType.Average,
+  }));
+
   // Auto-start: initialize builder options for the signal type
   const handleStart = useCallback((m: CompactMode) => {
     const defaultDb = datasource.getDefaultDatabase() || '';
@@ -214,6 +222,33 @@ const CompactQueryEditor = (props: CompactQueryEditorProps) => {
           otelVersion: otelVersion || undefined,
         },
       };
+    } else if (m === 'otel-metrics') {
+      const metricsDb = datasource.getDefaultMetricsDatabase() || defaultDb;
+      const metricsTable = datasource.getDefaultMetricsTable() || defaultMetricsTable;
+
+      newOptions = {
+        database: metricsDb,
+        table: metricsTable,
+        queryType: QueryType.TimeSeries,
+        mode: BuilderMode.Trend,
+        columns: [{ name: 'TimeUnix', hint: ColumnHint.Time }],
+        aggregates: [{ aggregateType: AggregateType.Average, column: 'Value' }],
+        filters: [{
+          type: 'datetime',
+          operator: FilterOperator.WithInGrafanaTimeRange,
+          filterType: 'custom',
+          key: '',
+          hint: ColumnHint.Time,
+          condition: 'AND',
+        } as DateFilterWithoutValue],
+        groupBy: ['ServiceName'],
+        orderBy: [{ name: 'time', dir: OrderByDirection.ASC }],
+        meta: {
+          otelEnabled: true,
+        },
+      };
+      // Remove limit for metrics — trend queries aggregate over full time range
+      delete (newOptions as any).limit;
     } else if (m === 'otel-traces') {
       const tracesDb = datasource.getDefaultTraceDatabase() || defaultDb;
       const tracesTable = datasource.getDefaultTraceTable() || '';
@@ -283,6 +318,43 @@ const CompactQueryEditor = (props: CompactQueryEditorProps) => {
     }
   };
 
+  const handleMetricsStateChange = (newState: MetricsBarState) => {
+    setMetricsState(newState);
+    const metricsDb = datasource.getDefaultMetricsDatabase() || datasource.getDefaultDatabase() || '';
+
+    // Build MetricName filter
+    const metricFilter: import('types/queryBuilder').Filter[] = newState.metricName
+      ? [{
+          type: 'string',
+          operator: FilterOperator.Equals,
+          key: 'MetricName',
+          value: newState.metricName,
+          condition: 'AND',
+        } as import('types/queryBuilder').StringFilter]
+      : [];
+
+    // Preserve time filters from current options
+    const timeFilters = (builderOptions.filters || []).filter(
+      (f) => f.type === 'datetime' || f.hint === ColumnHint.Time || f.hint === ColumnHint.FilterTime
+    );
+
+    const newOptions: QueryBuilderOptions = {
+      ...builderOptions,
+      database: metricsDb,
+      table: newState.tableType,
+      aggregates: [{ aggregateType: newState.aggregateType, column: 'Value' }],
+      filters: [...timeFilters, ...metricFilter],
+      orderBy: [{ name: 'time', dir: OrderByDirection.ASC }],
+      limit: 0,
+    };
+    builderOptionsDispatch(setAllOptions(newOptions));
+    if (onQueryChange) {
+      onQueryChange(newOptions);
+    }
+  };
+
+  const isMetrics = mode === 'otel-metrics';
+
   return (
     <div data-testid="query-editor-compact">
       <CompactModeBar
@@ -297,6 +369,15 @@ const CompactQueryEditor = (props: CompactQueryEditorProps) => {
         onToggleAdvanced={() => setAdvancedOpen(!advancedOpen)}
         advancedOpen={advancedOpen}
       />
+
+      {isMetrics && (
+        <CompactMetricsBar
+          datasource={datasource}
+          database={builderOptions.database || datasource.getDefaultDatabase() || ''}
+          state={metricsState}
+          onChange={handleMetricsStateChange}
+        />
+      )}
 
       <CompactFilterBar
         datasource={datasource}

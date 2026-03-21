@@ -564,6 +564,9 @@ const generateAggregateTimeSeriesQuery = (_options: QueryBuilderOptions): string
   if (orderBy) {
     queryParts.push('ORDER BY');
     queryParts.push(orderBy);
+  } else if (timeColumn?.alias) {
+    queryParts.push('ORDER BY');
+    queryParts.push(`${timeColumn.alias} ASC`);
   }
 
   const limit = getLimit(options.limit);

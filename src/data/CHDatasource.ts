@@ -1293,6 +1293,24 @@ export class Datasource
     return this.settings.jsonData.traces?.traceLinksColumnPrefix || 'Links';
   }
 
+  getDefaultMetricsDatabase(): string | undefined {
+    return this.settings.jsonData.metrics?.defaultDatabase;
+  }
+
+  getDefaultMetricsTable(): string | undefined {
+    return this.settings.jsonData.metrics?.defaultTable;
+  }
+
+  getMetricsOtelVersion(): string | undefined {
+    const metricsConfig = this.settings.jsonData.metrics;
+    return metricsConfig?.otelEnabled ? metricsConfig.otelVersion || undefined : undefined;
+  }
+
+  async fetchMetricNames(db: string, table: string): Promise<string[]> {
+    const rawSql = `SELECT DISTINCT MetricName FROM "${db}"."${table}" ORDER BY MetricName LIMIT 500`;
+    return this.fetchData(rawSql);
+  }
+
   /**
    * Get the TraceId column name from traces configuration
    * Used when creating logs filter to correlate with trace data

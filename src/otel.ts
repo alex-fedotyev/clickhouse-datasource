@@ -2,6 +2,17 @@ import { ColumnHint, TimeUnit } from 'types/queryBuilder';
 
 export const defaultLogsTable = 'otel_logs';
 export const defaultTraceTable = 'otel_traces';
+export const defaultMetricsTable = 'otel_metrics_gauge';
+
+export const metricsTableTypes = [
+  { label: 'Gauge', value: 'otel_metrics_gauge', description: 'Point-in-time values (cpu utilization, memory usage)' },
+  { label: 'Sum', value: 'otel_metrics_sum', description: 'Cumulative counters (cpu.time, disk.io, network.io)' },
+  { label: 'Histogram', value: 'otel_metrics_histogram', description: 'Distribution summaries' },
+  { label: 'Summary', value: 'otel_metrics_summary', description: 'Pre-calculated quantiles' },
+  { label: 'Exp. Histogram', value: 'otel_metrics_exponential_histogram', description: 'Exponential distribution' },
+] as const;
+
+export type MetricsTableType = typeof metricsTableTypes[number]['value'];
 
 export const traceTimestampTableSuffix = '_trace_id_ts';
 

@@ -81,6 +81,10 @@ export enum AggregateType {
   Max = 'max',
   Count = 'count',
   Any = 'any',
+  P50 = 'quantile(0.5)',
+  P90 = 'quantile(0.9)',
+  P95 = 'quantile(0.95)',
+  P99 = 'quantile(0.99)',
   // Count_Distinct = 'count_distinct',
 }
 
