@@ -3,7 +3,7 @@ import { css } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
 import { useStyles2, Icon } from '@grafana/ui';
 import { Datasource } from 'data/CHDatasource';
-import { QueryType, BuilderMode, ColumnHint, FilterOperator, DateFilterWithoutValue } from 'types/queryBuilder';
+import { QueryType, BuilderMode, ColumnHint, FilterOperator, DateFilterWithoutValue, StringFilter, NumberFilter, OrderBy, OrderByDirection } from 'types/queryBuilder';
 import {
   BuilderOptionsReducerAction,
   setAllOptions,
@@ -128,6 +128,46 @@ export const QueryStarter = (props: QueryStarterProps) => {
       condition: 'AND',
     } as DateFilterWithoutValue];
 
+    let defaultOrderBy: OrderBy[] = [];
+
+    // For trace search, match the official plugin's defaults:
+    // root spans only, duration > 0, service name placeholder, ordered by time + duration
+    if (queryType === QueryType.Traces) {
+      defaultFilters.push(
+        {
+          type: 'string',
+          operator: FilterOperator.IsEmpty,
+          filterType: 'custom',
+          key: '',
+          hint: ColumnHint.TraceParentSpanId,
+          condition: 'AND',
+          value: '',
+        } as StringFilter,
+        {
+          type: 'UInt64',
+          operator: FilterOperator.GreaterThan,
+          filterType: 'custom',
+          key: '',
+          hint: ColumnHint.TraceDurationTime,
+          condition: 'AND',
+          value: 0,
+        } as NumberFilter,
+        {
+          type: 'string',
+          operator: FilterOperator.IsAnything,
+          filterType: 'custom',
+          key: '',
+          hint: ColumnHint.TraceServiceName,
+          condition: 'AND',
+          value: '',
+        } as StringFilter,
+      );
+      defaultOrderBy = [
+        { name: '', hint: ColumnHint.Time, dir: OrderByDirection.DESC, default: true },
+        { name: '', hint: ColumnHint.TraceDurationTime, dir: OrderByDirection.DESC, default: true },
+      ];
+    }
+
     builderOptionsDispatch(setAllOptions({
       database: database || defaultDb,
       table,
@@ -135,7 +175,7 @@ export const QueryStarter = (props: QueryStarterProps) => {
       mode: mode || (queryType === QueryType.Logs ? BuilderMode.List : undefined),
       columns,
       filters: defaultFilters,
-      orderBy: [],
+      orderBy: defaultOrderBy,
       meta: {
         otelEnabled: Boolean(otelVersion),
         otelVersion: otelVersion || undefined,
