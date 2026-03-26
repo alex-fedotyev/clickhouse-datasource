@@ -205,6 +205,41 @@ export const applyTraceSearchFieldConfig = (req: DataQueryRequest<CHQuery>, res:
 };
 
 /**
+ * Applies smooth line interpolation and visual defaults to time series response frames.
+ * Only affects TimeSeries queries in Trend mode (aggregate metrics).
+ */
+const applyTimeSeriesFieldConfig = (req: DataQueryRequest<CHQuery>, res: DataQueryResponse): void => {
+  res.data.forEach((frame: DataFrame) => {
+    const originalQuery = req.targets.find((t) => t.refId === frame.refId) as CHBuilderQuery;
+    if (!originalQuery) {
+      return;
+    }
+
+    const isTimeSeries = originalQuery.editorType === EditorType.Builder &&
+      originalQuery.builderOptions?.queryType === QueryType.TimeSeries;
+
+    if (!isTimeSeries) {
+      return;
+    }
+
+    frame.fields.forEach((field) => {
+      if (field.type === FieldType.number) {
+        field.config = {
+          ...field.config,
+          custom: {
+            ...field.config?.custom,
+            lineInterpolation: 'smooth',
+            lineWidth: 2,
+            fillOpacity: 6,
+            showPoints: 'never',
+          },
+        };
+      }
+    });
+  });
+};
+
+/**
  * T-NEW: Enriches response frames with Grafana metadata for optimal visualization.
  * Sets DataFrameType, preferredVisualisationType, executedQueryString, and query stats.
  * Also generates supplementary frames (status bar chart for traces, etc.)
@@ -437,6 +472,7 @@ export const transformQueryResponseWithTraceAndLogLinks = (
   res: DataQueryResponse
 ): DataQueryResponse => {
   applyTraceSearchFieldConfig(req, res);
+  applyTimeSeriesFieldConfig(req, res);
   // NOTE: enrichResponseMetadata disabled — was causing stack overflow in Grafana's
   // frame deep-clone logic. The metadata enrichment (preferredVisualisationType, etc.)
   // needs to be done differently, likely via the backend response metadata.

@@ -187,6 +187,7 @@ const CompactQueryEditor = (props: CompactQueryEditorProps) => {
     tableType: (builderOptions.table as MetricsTableType) || (datasource.getDefaultMetricsTable() as MetricsTableType) || defaultMetricsTable,
     metricName: '',
     aggregateType: AggregateType.Average,
+    groupBy: builderOptions.groupBy || ['ServiceName'],
   }));
 
   // Auto-start: initialize builder options for the signal type
@@ -376,6 +377,7 @@ const CompactQueryEditor = (props: CompactQueryEditorProps) => {
       table: newState.tableType,
       aggregates: [{ aggregateType: newState.aggregateType, column: 'Value' }],
       filters: [...timeFilters, ...metricFilter],
+      groupBy: newState.groupBy,
       orderBy: [{ name: 'time', dir: OrderByDirection.ASC }],
       limit: 0,
     };
@@ -406,6 +408,7 @@ const CompactQueryEditor = (props: CompactQueryEditorProps) => {
         <CompactMetricsBar
           datasource={datasource}
           database={builderOptions.database || datasource.getDefaultDatabase() || ''}
+          table={builderOptions.table || ''}
           state={metricsState}
           onChange={handleMetricsStateChange}
         />

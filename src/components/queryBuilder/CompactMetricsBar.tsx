@@ -10,11 +10,13 @@ export interface MetricsBarState {
   tableType: MetricsTableType;
   metricName: string;
   aggregateType: AggregateType;
+  groupBy: string[];
 }
 
 interface CompactMetricsBarProps {
   datasource: Datasource;
   database: string;
+  table: string;
   state: MetricsBarState;
   onChange: (state: MetricsBarState) => void;
 }
@@ -55,9 +57,29 @@ const getStyles = (theme: GrafanaTheme2) => ({
   `,
 });
 
+/** Common OTEL groupBy suggestions shown first */
+const defaultGroupBySuggestions = ['ServiceName', 'SpanName', 'SeverityText', 'StatusCode'];
+
 export const CompactMetricsBar = (props: CompactMetricsBarProps) => {
-  const { datasource, database, state, onChange } = props;
+  const { datasource, database, table, state, onChange } = props;
   const styles = useStyles2(getStyles);
+
+  // Load available columns for groupBy suggestions
+  const [groupByOptions, setGroupByOptions] = useState<Array<SelectableValue<string>>>([]);
+  useEffect(() => {
+    if (!database || !table) { return; }
+    datasource.fetchColumns(database, table).then((cols) => {
+      const stringCols = cols
+        .filter(c => c.type?.match(/String|LowCardinality/i))
+        .map(c => c.name);
+      // Prioritize common OTEL columns, then alphabetical
+      const sorted = [
+        ...defaultGroupBySuggestions.filter(s => stringCols.includes(s)),
+        ...stringCols.filter(s => !defaultGroupBySuggestions.includes(s)).sort(),
+      ];
+      setGroupByOptions(sorted.map(n => ({ label: n, value: n })));
+    }).catch(() => setGroupByOptions([]));
+  }, [datasource, database, table]);
 
   const loadMetricNames = useCallback(
     async (inputValue: string): Promise<Array<SelectableValue<string>>> => {
@@ -94,6 +116,12 @@ export const CompactMetricsBar = (props: CompactMetricsBarProps) => {
     }
   };
 
+  const onGroupByChange = (values: Array<SelectableValue<string>>) => {
+    onChange({ ...state, groupBy: values.map(v => v.value!).filter(Boolean) });
+  };
+
+  const groupByValue = state.groupBy.map(g => ({ label: g, value: g }));
+
   return (
     <div className={styles.bar} data-testid="compact-metrics-bar">
       <Select
@@ -120,6 +148,16 @@ export const CompactMetricsBar = (props: CompactMetricsBarProps) => {
         onChange={onAggregateChange}
         width={12}
         prefix="Agg"
+      />
+      <Select
+        isMulti
+        options={groupByOptions}
+        value={groupByValue}
+        onChange={onGroupByChange}
+        width={28}
+        placeholder="Group by..."
+        isClearable
+        allowCustomValue
       />
     </div>
   );
