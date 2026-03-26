@@ -1,10 +1,10 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { css } from '@emotion/css';
 import { GrafanaTheme2, SelectableValue } from '@grafana/data';
-import { useStyles2, Select, AsyncSelect } from '@grafana/ui';
+import { useStyles2, Select, AsyncSelect, Button, Icon } from '@grafana/ui';
 import { Datasource } from 'data/CHDatasource';
 import { metricsTableTypes, MetricsTableType } from 'otel';
-import { AggregateType } from 'types/queryBuilder';
+import { AggregateType, TableColumn } from 'types/queryBuilder';
 
 export interface MetricsBarState {
   tableType: MetricsTableType;
@@ -55,6 +55,11 @@ const getStyles = (theme: GrafanaTheme2) => ({
     padding: ${theme.spacing(0.5)} 0;
     flex-wrap: wrap;
   `,
+  groupByLabel: css`
+    font-size: ${theme.typography.bodySmall.fontSize};
+    color: ${theme.colors.text.secondary};
+    white-space: nowrap;
+  `,
 });
 
 /** Common OTEL groupBy suggestions shown first */
@@ -65,21 +70,50 @@ export const CompactMetricsBar = (props: CompactMetricsBarProps) => {
   const styles = useStyles2(getStyles);
 
   // Load available columns for groupBy suggestions
+  const [allColumns, setAllColumns] = useState<readonly TableColumn[]>([]);
   const [groupByOptions, setGroupByOptions] = useState<Array<SelectableValue<string>>>([]);
+  const [mapKeyOptions, setMapKeyOptions] = useState<Array<SelectableValue<string>>>([]);
+  const [pendingMapColumn, setPendingMapColumn] = useState<string>('');
+
   useEffect(() => {
     if (!database || !table) { return; }
     datasource.fetchColumns(database, table).then((cols) => {
-      const stringCols = cols
-        .filter(c => c.type?.match(/String|LowCardinality/i))
-        .map(c => c.name);
-      // Prioritize common OTEL columns, then alphabetical
+      setAllColumns(cols);
+      const options: Array<SelectableValue<string>> = [];
+      const stringCols: string[] = [];
+      const mapCols: string[] = [];
+
+      cols.forEach(c => {
+        if (c.type?.startsWith('Map(')) {
+          mapCols.push(c.name);
+        } else if (c.type?.match(/String|LowCardinality/i)) {
+          stringCols.push(c.name);
+        }
+      });
+
+      // Prioritize common OTEL columns, then alphabetical string cols
       const sorted = [
         ...defaultGroupBySuggestions.filter(s => stringCols.includes(s)),
         ...stringCols.filter(s => !defaultGroupBySuggestions.includes(s)).sort(),
       ];
-      setGroupByOptions(sorted.map(n => ({ label: n, value: n })));
-    }).catch(() => setGroupByOptions([]));
+      sorted.forEach(n => options.push({ label: n, value: n }));
+      // Add Map columns with description hint
+      mapCols.sort().forEach(n => options.push({ label: `${n} [Map]`, value: `__map__${n}`, description: 'Select a key to group by' }));
+
+      setGroupByOptions(options);
+    }).catch(() => { setGroupByOptions([]); setAllColumns([]); });
   }, [datasource, database, table]);
+
+  // Load map keys when a Map column is selected for expansion
+  useEffect(() => {
+    if (!pendingMapColumn || !database || !table) {
+      setMapKeyOptions([]);
+      return;
+    }
+    datasource.fetchUniqueMapKeys(pendingMapColumn, database, table)
+      .then(keys => setMapKeyOptions(keys.sort().map(k => ({ label: k, value: k }))))
+      .catch(() => setMapKeyOptions([]));
+  }, [datasource, database, table, pendingMapColumn]);
 
   const loadMetricNames = useCallback(
     async (inputValue: string): Promise<Array<SelectableValue<string>>> => {
@@ -117,7 +151,25 @@ export const CompactMetricsBar = (props: CompactMetricsBarProps) => {
   };
 
   const onGroupByChange = (values: Array<SelectableValue<string>>) => {
-    onChange({ ...state, groupBy: values.map(v => v.value!).filter(Boolean) });
+    const newGroupBy: string[] = [];
+    for (const v of values) {
+      const val = v.value || '';
+      if (val.startsWith('__map__')) {
+        // User selected a Map column — open key picker instead of adding directly
+        setPendingMapColumn(val.replace('__map__', ''));
+        return; // Don't update groupBy yet — wait for key selection
+      }
+      newGroupBy.push(val);
+    }
+    onChange({ ...state, groupBy: newGroupBy.filter(Boolean) });
+  };
+
+  const onMapKeySelect = (v: SelectableValue<string>) => {
+    if (v.value && pendingMapColumn) {
+      const mapExpr = `${pendingMapColumn}['${v.value}']`;
+      onChange({ ...state, groupBy: [...state.groupBy, mapExpr] });
+    }
+    setPendingMapColumn('');
   };
 
   const groupByValue = state.groupBy.map(g => ({ label: g, value: g }));
@@ -149,16 +201,30 @@ export const CompactMetricsBar = (props: CompactMetricsBarProps) => {
         width={12}
         prefix="Agg"
       />
+      <span className={styles.groupByLabel}>Group by</span>
       <Select
         isMulti
         options={groupByOptions}
         value={groupByValue}
         onChange={onGroupByChange}
         width={28}
-        placeholder="Group by..."
+        placeholder="Select..."
         isClearable
         allowCustomValue
       />
+      {pendingMapColumn && (
+        <Select
+          options={mapKeyOptions}
+          onChange={onMapKeySelect}
+          width={28}
+          placeholder={`${pendingMapColumn} key...`}
+          prefix="Map key"
+          autoFocus
+          openMenuOnFocus
+          onBlur={() => setPendingMapColumn('')}
+          menuPlacement="bottom"
+        />
+      )}
     </div>
   );
 };
