@@ -1,10 +1,10 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { css } from '@emotion/css';
 import { GrafanaTheme2, SelectableValue } from '@grafana/data';
-import { useStyles2, Select, AsyncSelect, Button, Icon } from '@grafana/ui';
+import { useStyles2, Select, AsyncSelect } from '@grafana/ui';
 import { Datasource } from 'data/CHDatasource';
 import { metricsTableTypes, MetricsTableType } from 'otel';
-import { AggregateType, TableColumn } from 'types/queryBuilder';
+import { AggregateType } from 'types/queryBuilder';
 
 export interface MetricsBarState {
   tableType: MetricsTableType;
@@ -70,7 +70,7 @@ export const CompactMetricsBar = (props: CompactMetricsBarProps) => {
   const styles = useStyles2(getStyles);
 
   // Load available columns for groupBy suggestions
-  const [allColumns, setAllColumns] = useState<readonly TableColumn[]>([]);
+  const [allColumns, setAllColumns] = useState<Array<{name: string; type?: string}>>([]);
   const [groupByOptions, setGroupByOptions] = useState<Array<SelectableValue<string>>>([]);
   const [mapKeyOptions, setMapKeyOptions] = useState<Array<SelectableValue<string>>>([]);
   const [pendingMapColumn, setPendingMapColumn] = useState<string>('');
@@ -78,7 +78,7 @@ export const CompactMetricsBar = (props: CompactMetricsBarProps) => {
   useEffect(() => {
     if (!database || !table) { return; }
     datasource.fetchColumns(database, table).then((cols) => {
-      setAllColumns(cols);
+      setAllColumns(cols.map(c => ({ name: c.name, type: c.type })));
       const options: Array<SelectableValue<string>> = [];
       const stringCols: string[] = [];
       const mapCols: string[] = [];
@@ -97,11 +97,11 @@ export const CompactMetricsBar = (props: CompactMetricsBarProps) => {
         ...stringCols.filter(s => !defaultGroupBySuggestions.includes(s)).sort(),
       ];
       sorted.forEach(n => options.push({ label: n, value: n }));
-      // Add Map columns with description hint
-      mapCols.sort().forEach(n => options.push({ label: `${n} [Map]`, value: `__map__${n}`, description: 'Select a key to group by' }));
+      // Add Map columns with [Map] hint — selecting triggers key picker
+      mapCols.sort().forEach(n => options.push({ label: `${n} [Map]`, value: `__map__${n}`, description: 'Pick a key to group by' }));
 
       setGroupByOptions(options);
-    }).catch(() => { setGroupByOptions([]); setAllColumns([]); });
+    }).catch(() => setGroupByOptions([]));
   }, [datasource, database, table]);
 
   // Load map keys when a Map column is selected for expansion
@@ -150,29 +150,40 @@ export const CompactMetricsBar = (props: CompactMetricsBarProps) => {
     }
   };
 
+  // Group By: unified handler — regular columns added directly, Map columns (__map__ prefix) open key picker
   const onGroupByChange = (values: Array<SelectableValue<string>>) => {
     const newGroupBy: string[] = [];
     for (const v of values) {
       const val = v.value || '';
       if (val.startsWith('__map__')) {
-        // User selected a Map column — open key picker instead of adding directly
         setPendingMapColumn(val.replace('__map__', ''));
-        return; // Don't update groupBy yet — wait for key selection
+        return;
       }
       newGroupBy.push(val);
     }
     onChange({ ...state, groupBy: newGroupBy.filter(Boolean) });
   };
 
+  // Map key selected — add combined expression, keep selectors visible for further picks
+  const [selectedMapKey, setSelectedMapKey] = useState<string>('');
   const onMapKeySelect = (v: SelectableValue<string>) => {
     if (v.value && pendingMapColumn) {
       const mapExpr = `${pendingMapColumn}['${v.value}']`;
-      onChange({ ...state, groupBy: [...state.groupBy, mapExpr] });
+      setSelectedMapKey(v.value);
+      if (!state.groupBy.includes(mapExpr)) {
+        onChange({ ...state, groupBy: [...state.groupBy, mapExpr] });
+      }
     }
-    setPendingMapColumn('');
   };
 
-  const groupByValue = state.groupBy.map(g => ({ label: g, value: g }));
+  // Display labels for groupBy values — shorten Map expressions for tags
+  const groupByValue = state.groupBy.map(g => {
+    const mapMatch = g.match(/^(\w+)\['(.+)'\]$/);
+    if (mapMatch) {
+      return { label: `${mapMatch[1]}.${mapMatch[2]}`, value: g };
+    }
+    return { label: g, value: g };
+  });
 
   return (
     <div className={styles.bar} data-testid="compact-metrics-bar">
@@ -180,7 +191,7 @@ export const CompactMetricsBar = (props: CompactMetricsBarProps) => {
         options={tableTypeOptions}
         value={state.tableType}
         onChange={onTableTypeChange}
-        width={16}
+        width={18}
         prefix="Table"
       />
       <AsyncSelect
@@ -189,7 +200,7 @@ export const CompactMetricsBar = (props: CompactMetricsBarProps) => {
         defaultOptions
         value={state.metricName ? { label: state.metricName, value: state.metricName } : null}
         onChange={onMetricNameChange}
-        width={36}
+        width={40}
         placeholder="Select metric..."
         isClearable
         allowCustomValue
@@ -198,7 +209,7 @@ export const CompactMetricsBar = (props: CompactMetricsBarProps) => {
         options={aggregateOptions}
         value={state.aggregateType}
         onChange={onAggregateChange}
-        width={12}
+        width={14}
         prefix="Agg"
       />
       <span className={styles.groupByLabel}>Group by</span>
@@ -207,23 +218,38 @@ export const CompactMetricsBar = (props: CompactMetricsBarProps) => {
         options={groupByOptions}
         value={groupByValue}
         onChange={onGroupByChange}
-        width={28}
-        placeholder="Select..."
+        width={32}
+        placeholder="Column..."
         isClearable
         allowCustomValue
       />
       {pendingMapColumn && (
-        <Select
-          options={mapKeyOptions}
-          onChange={onMapKeySelect}
-          width={28}
-          placeholder={`${pendingMapColumn} key...`}
-          prefix="Map key"
-          autoFocus
-          openMenuOnFocus
-          onBlur={() => setPendingMapColumn('')}
-          menuPlacement="bottom"
-        />
+        <>
+          <Select
+            options={allColumns
+              .filter(c => c.type?.startsWith('Map('))
+              .map(c => ({ label: c.name, value: c.name }))}
+            value={pendingMapColumn}
+            onChange={(v) => {
+              setPendingMapColumn(v.value || '');
+              setSelectedMapKey('');
+            }}
+            width={22}
+            prefix="Attr"
+            isClearable
+            onClear={() => { setPendingMapColumn(''); setSelectedMapKey(''); }}
+          />
+          <Select
+            key={pendingMapColumn}
+            options={mapKeyOptions}
+            value={selectedMapKey || undefined}
+            onChange={onMapKeySelect}
+            width={28}
+            placeholder="Select key..."
+            prefix="Key"
+            menuPlacement="bottom"
+          />
+        </>
       )}
     </div>
   );

@@ -222,6 +222,8 @@ const applyTimeSeriesFieldConfig = (req: DataQueryRequest<CHQuery>, res: DataQue
       return;
     }
 
+    // Field configs for smooth lines — respected by dashboard Time Series panels.
+    // Explore's legacy Graph panel ignores these, but they improve dashboard usage.
     frame.fields.forEach((field) => {
       if (field.type === FieldType.number) {
         field.config = {
