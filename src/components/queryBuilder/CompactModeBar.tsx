@@ -126,14 +126,14 @@ export const CompactModeBar = (props: CompactModeBarProps) => {
         />
       )}
 
-      {(isLogs || isTraces) && (
+      {isLogs && (
         <div className={styles.searchWrapper}>
           <Input
             value={localSearch}
             onChange={(e) => setLocalSearch(e.currentTarget.value)}
             onBlur={() => onSearchChange(localSearch)}
             onKeyDown={handleSearchKeyDown}
-            placeholder={isLogs ? 'Search logs...' : 'Search traces by service or operation...'}
+            placeholder="Search log body text..."
             prefix={<Icon name="search" />}
           />
         </div>

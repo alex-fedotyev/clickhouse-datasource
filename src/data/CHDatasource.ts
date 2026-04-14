@@ -67,6 +67,7 @@ import {
 import { generateSql, getColumnByHint, logAliasToColumnHints } from './sqlGenerator';
 import { labelsFieldName, transformQueryResponseWithTraceAndLogLinks } from './utils';
 import { CHVariableSupport } from './CHVariableSupport';
+import { createAnnotationSupport } from './CHAnnotationSupport';
 
 export class Datasource
   extends DataSourceWithBackend<CHQuery, CHConfig>
@@ -79,41 +80,8 @@ export class Datasource
     DataSourceWithQueryExportSupport<CHQuery>,
     DataSourceWithLogsLabelTypesSupport
 {
-  // T1.6: AnnotationSupport with migration and default query
-  annotations: AnnotationSupport<CHQuery> = {
-    prepareAnnotation: (json: any) => {
-      // Migrate old string-based annotation queries to CHQuery format
-      if (json?.rawQuery && !json?.target?.rawSql) {
-        return {
-          ...json,
-          target: {
-            editorType: EditorType.SQL,
-            rawSql: json.rawQuery,
-            refId: 'annotation',
-          },
-        };
-      }
-      return json;
-    },
-    getDefaultQuery: (): Partial<CHQuery> => {
-      return {
-        editorType: EditorType.SQL,
-        rawSql: [
-          'SELECT',
-          '  Timestamp AS time,',
-          '  Body AS text,',
-          "  SeverityText AS tags,",
-          "  ServiceName AS title",
-          'FROM otel_logs',
-          'WHERE $__timeFilter(Timestamp)',
-          "  AND SeverityText IN ('ERROR', 'FATAL')",
-          'ORDER BY Timestamp',
-          'LIMIT 100',
-        ].join('\n'),
-        refId: 'annotation',
-      };
-    },
-  };
+  // T1.6: AnnotationSupport with presets, migration, and transition detection
+  annotations!: AnnotationSupport<CHQuery>;
   settings: DataSourceInstanceSettings<CHConfig>;
   adHocFilter: AdHocFilter;
   skipAdHocFilter = false; // don't apply adhoc filters to the query
@@ -125,6 +93,7 @@ export class Datasource
     this.settings = instanceSettings;
     this.adHocFilter = new AdHocFilter();
     this.variables = new CHVariableSupport(this);
+    this.annotations = createAnnotationSupport(this);
   }
 
   static logVolumePrefix = 'log-volume-';

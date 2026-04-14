@@ -134,10 +134,7 @@ export const FilterTagBar = (props: FilterTagBarProps) => {
           <Tooltip key={index} content={`${name} ${op} ${value}`.trim()} placement="top">
             <span className={styles.tag}>
               <span className={styles.tagContent}>
-                {index > 0 && filters[index].condition && (
-                  <span className={styles.tagOperator}>{filters[index].condition} </span>
-                )}
-                <span className={styles.tagKey}>{name}</span>
+                  <span className={styles.tagKey}>{name}</span>
                 <span className={styles.tagOperator}> {op} </span>
                 {value && <span className={styles.tagValue}>{value}</span>}
               </span>

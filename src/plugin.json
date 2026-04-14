@@ -28,11 +28,6 @@
     },
     {
       "type": "dashboard",
-      "name": "ClickHouse OTel Dashboard",
-      "path": "dashboards/opentelemetry-clickhouse.json"
-    },
-    {
-      "type": "dashboard",
       "name": "ClickHouse System Dashboards",
       "path": "dashboards/system-dashboards.json"
     },
@@ -48,13 +43,8 @@
     },
     {
       "type": "dashboard",
-      "name": "OTel Service Overview (RED Metrics)",
-      "path": "dashboards/otel-red-metrics.json"
-    },
-    {
-      "type": "dashboard",
-      "name": "Cross-Signal Correlation",
-      "path": "dashboards/otel-cross-signal.json"
+      "name": "OTel Service Dashboard",
+      "path": "dashboards/otel-service-dashboard.json"
     }
   ],
   "category": "sql",

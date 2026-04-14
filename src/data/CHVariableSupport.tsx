@@ -1,22 +1,92 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useCallback } from 'react';
 import { CustomVariableSupport, DataQueryRequest, DataQueryResponse, QueryEditorProps } from '@grafana/data';
 import { InlineFormLabel, Select, Input } from '@grafana/ui';
 import { Observable, from, of } from 'rxjs';
 import { Datasource } from './CHDatasource';
 import { CHQuery, EditorType } from 'types/sql';
 import { CHConfig } from 'types/config';
-import { QueryBuilderOptions, QueryType } from 'types/queryBuilder';
+import { SchemaPicker, SchemaPickerValue } from 'components/queryBuilder/SchemaPicker';
+
+type VariableQueryType = 'sql' | 'column_values' | 'columns' | 'tables' | 'databases' | 'otel_services' | 'otel_levels' | 'otel_operations';
 
 /**
  * Variable query model — serialized in dashboard JSON
  */
 interface CHVariableQuery {
   refId: string;
-  queryType: 'sql' | 'columns' | 'tables' | 'databases' | 'otel_services' | 'otel_levels' | 'otel_operations';
+  queryType: VariableQueryType;
   rawSql?: string;
   database?: string;
   table?: string;
   column?: string;
+  mapKey?: string;
+}
+
+/**
+ * Generate SQL from variable type and schema selections
+ */
+function generateVariableSQL(
+  queryType: VariableQueryType,
+  schema: SchemaPickerValue,
+  defaultDb: string
+): string {
+  switch (queryType) {
+    case 'databases':
+      return 'SELECT name FROM system.databases ORDER BY name';
+    case 'tables':
+      if (!schema.database) {
+        return '';
+      }
+      return `SELECT name FROM system.tables WHERE database = '${schema.database}' ORDER BY name`;
+    case 'columns':
+      if (!schema.database || !schema.table) {
+        return '';
+      }
+      return `SELECT name FROM system.columns WHERE database = '${schema.database}' AND table = '${schema.table}' ORDER BY name`;
+    case 'column_values': {
+      if (!schema.database || !schema.table || !schema.column) {
+        return '';
+      }
+      const colExpr = schema.mapKey ? `${schema.column}['${schema.mapKey}']` : schema.column;
+      const fullTable = `${schema.database}.${schema.table}`;
+      return `SELECT DISTINCT ${colExpr} FROM ${fullTable} WHERE $__timeFilter(Timestamp) AND ${colExpr} != '' ORDER BY 1 LIMIT 1000`;
+    }
+    case 'otel_services':
+      return `SELECT DISTINCT ServiceName FROM ${defaultDb || 'otel_v2'}.otel_logs WHERE $__timeFilter(Timestamp) ORDER BY ServiceName`;
+    case 'otel_levels':
+      return `SELECT DISTINCT SeverityText FROM ${defaultDb || 'otel_v2'}.otel_logs WHERE $__timeFilter(Timestamp) ORDER BY SeverityText`;
+    case 'otel_operations':
+      return `SELECT DISTINCT SpanName FROM ${defaultDb || 'otel_v2'}.otel_traces WHERE $__timeFilter(Timestamp) ORDER BY SpanName LIMIT 200`;
+    default:
+      return '';
+  }
+}
+
+const QUERY_TYPE_OPTIONS = [
+  { label: 'Custom SQL', value: 'sql' as VariableQueryType },
+  { label: 'List databases', value: 'databases' as VariableQueryType },
+  { label: 'List tables', value: 'tables' as VariableQueryType },
+  { label: 'List columns', value: 'columns' as VariableQueryType },
+  { label: 'Column values', value: 'column_values' as VariableQueryType, description: 'Distinct values from a column, with Map key support' },
+  { label: 'OTEL: Service names', value: 'otel_services' as VariableQueryType, icon: 'bolt' as any },
+  { label: 'OTEL: Log levels', value: 'otel_levels' as VariableQueryType, icon: 'bolt' as any },
+  { label: 'OTEL: Operations', value: 'otel_operations' as VariableQueryType, icon: 'bolt' as any },
+];
+
+/**
+ * Schema picker depth per query type
+ */
+function getSchemaLevel(queryType: VariableQueryType) {
+  switch (queryType) {
+    case 'tables':
+      return 'database' as const;
+    case 'columns':
+      return 'table' as const;
+    case 'column_values':
+      return 'mapKey' as const;
+    default:
+      return undefined;
+  }
 }
 
 /**
@@ -24,56 +94,48 @@ interface CHVariableQuery {
  */
 const VariableQueryEditor = (props: QueryEditorProps<Datasource, CHQuery, CHConfig, CHVariableQuery>) => {
   const { query, onChange, datasource } = props;
-  const [databases, setDatabases] = useState<string[]>([]);
-  const [tables, setTables] = useState<string[]>([]);
-
   const varQuery = (query || {}) as CHVariableQuery;
   const queryType = varQuery.queryType || 'sql';
 
-  useEffect(() => {
-    // Fetch databases on mount
-    datasource.fetchDatabases().then(setDatabases).catch(() => {});
-  }, [datasource]);
-
-  useEffect(() => {
-    if (varQuery.database) {
-      datasource.fetchTables(varQuery.database).then(setTables).catch(() => {});
-    }
-  }, [datasource, varQuery.database]);
+  const schemaValue: SchemaPickerValue = {
+    database: varQuery.database,
+    table: varQuery.table,
+    column: varQuery.column,
+    mapKey: varQuery.mapKey,
+  };
 
   const onQueryTypeChange = useCallback(
-    (value: string) => {
-      const updated = { ...varQuery, queryType: value as CHVariableQuery['queryType'] };
+    (value: VariableQueryType) => {
+      const updated: CHVariableQuery = {
+        ...varQuery,
+        queryType: value,
+      };
+      updated.rawSql = generateVariableSQL(value, schemaValue, datasource.getDefaultDatabase?.() || '');
+      onChange(updated as any);
+    },
+    [varQuery, onChange, datasource, schemaValue]
+  );
 
-      // Auto-fill SQL for OTEL presets
-      if (value === 'otel_services') {
-        updated.rawSql = `SELECT DISTINCT ServiceName FROM ${datasource.getDefaultDatabase()}.otel_logs WHERE $__timeFilter(Timestamp) ORDER BY ServiceName`;
-      } else if (value === 'otel_levels') {
-        updated.rawSql = `SELECT DISTINCT SeverityText FROM ${datasource.getDefaultDatabase()}.otel_logs WHERE $__timeFilter(Timestamp) ORDER BY SeverityText`;
-      } else if (value === 'otel_operations') {
-        updated.rawSql = `SELECT DISTINCT SpanName FROM ${datasource.getDefaultDatabase()}.otel_traces WHERE $__timeFilter(Timestamp) ORDER BY SpanName LIMIT 200`;
-      } else if (value === 'databases') {
-        updated.rawSql = `SELECT name FROM system.databases ORDER BY name`;
-      } else if (value === 'tables' && varQuery.database) {
-        updated.rawSql = `SELECT name FROM system.tables WHERE database = '${varQuery.database}' ORDER BY name`;
-      } else if (value === 'columns' && varQuery.database && varQuery.table) {
-        updated.rawSql = `SELECT name FROM system.columns WHERE database = '${varQuery.database}' AND table = '${varQuery.table}' ORDER BY name`;
-      }
-
+  const onSchemaChange = useCallback(
+    (newSchema: SchemaPickerValue) => {
+      const updated: CHVariableQuery = {
+        ...varQuery,
+        database: newSchema.database,
+        table: newSchema.table,
+        column: newSchema.column,
+        mapKey: newSchema.mapKey,
+      };
+      updated.rawSql = generateVariableSQL(updated.queryType, newSchema, datasource.getDefaultDatabase?.() || '');
       onChange(updated as any);
     },
     [varQuery, onChange, datasource]
   );
 
-  const queryTypeOptions = [
-    { label: 'Custom SQL', value: 'sql' },
-    { label: 'List databases', value: 'databases' },
-    { label: 'List tables', value: 'tables' },
-    { label: 'List columns', value: 'columns' },
-    { label: 'OTEL: Service names', value: 'otel_services', icon: 'bolt' },
-    { label: 'OTEL: Log levels', value: 'otel_levels', icon: 'bolt' },
-    { label: 'OTEL: Operations', value: 'otel_operations', icon: 'bolt' },
-  ];
+  const schemaLevel = getSchemaLevel(queryType);
+
+  const schemaLabels = queryType === 'column_values'
+    ? { column: 'Column', mapKey: 'Map Key' }
+    : undefined;
 
   return (
     <div>
@@ -81,51 +143,20 @@ const VariableQueryEditor = (props: QueryEditorProps<Datasource, CHQuery, CHConf
         <InlineFormLabel width={10}>Variable Type</InlineFormLabel>
         <Select
           width={30}
-          options={queryTypeOptions}
+          options={QUERY_TYPE_OPTIONS}
           value={queryType}
           onChange={(v) => onQueryTypeChange(v.value || 'sql')}
         />
       </div>
 
-      {(queryType === 'tables' || queryType === 'columns') && (
-        <div className="gf-form">
-          <InlineFormLabel width={10}>Database</InlineFormLabel>
-          <Select
-            width={30}
-            options={databases.map((d) => ({ label: d, value: d }))}
-            value={varQuery.database || ''}
-            onChange={(v) => {
-              const updated = { ...varQuery, database: v.value || '' };
-              if (queryType === 'tables') {
-                updated.rawSql = `SELECT name FROM system.tables WHERE database = '${v.value}' ORDER BY name`;
-              }
-              onChange(updated as any);
-            }}
-            isClearable
-            placeholder="Select database"
-          />
-        </div>
-      )}
-
-      {queryType === 'columns' && (
-        <div className="gf-form">
-          <InlineFormLabel width={10}>Table</InlineFormLabel>
-          <Select
-            width={30}
-            options={tables.map((t) => ({ label: t, value: t }))}
-            value={varQuery.table || ''}
-            onChange={(v) => {
-              const updated = {
-                ...varQuery,
-                table: v.value || '',
-                rawSql: `SELECT DISTINCT ${varQuery.column || 'name'} FROM ${varQuery.database}.${v.value} ORDER BY 1 LIMIT 1000`,
-              };
-              onChange(updated as any);
-            }}
-            isClearable
-            placeholder="Select table"
-          />
-        </div>
+      {schemaLevel && (
+        <SchemaPicker
+          datasource={datasource}
+          value={schemaValue}
+          onChange={onSchemaChange}
+          level={schemaLevel}
+          labels={schemaLabels}
+        />
       )}
 
       <div className="gf-form">
@@ -143,7 +174,6 @@ const VariableQueryEditor = (props: QueryEditorProps<Datasource, CHQuery, CHConf
 
 /**
  * T1.7: CustomVariableSupport implementation
- * Registers a guided variable editor with OTEL presets
  */
 export class CHVariableSupport extends CustomVariableSupport<Datasource, CHVariableQuery> {
   constructor(private readonly datasource: Datasource) {
@@ -158,14 +188,11 @@ export class CHVariableSupport extends CustomVariableSupport<Datasource, CHVaria
       return of({ data: [] });
     }
 
-    // Delegate to the datasource's existing metricFindQuery
     const promise = this.datasource.metricFindQuery(
       { rawSql: query.rawSql, editorType: EditorType.SQL } as CHQuery,
       { range: request.range }
     ).then((values) => {
-      return {
-        data: values.map((v) => v),
-      } as DataQueryResponse;
+      return { data: values.map((v) => v) } as DataQueryResponse;
     });
 
     return from(promise);
