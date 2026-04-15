@@ -43,6 +43,7 @@ interface QueryBuilderProps {
 export const QueryBuilder = (props: QueryBuilderProps) => {
   const { datasource, builderOptions, builderOptionsDispatch, generatedSql, onSwitchToSql, onQueryChange } = props;
   const signalType = datasource.getSignalType();
+  const singleTableMode = datasource.isSingleTableMode();
 
   const onDatabaseChange = (database: string) => builderOptionsDispatch(setDatabase(database));
   const onTableChange = (table: string) => builderOptionsDispatch(setTable(table));
@@ -65,8 +66,8 @@ export const QueryBuilder = (props: QueryBuilderProps) => {
     (!builderOptions.filters || builderOptions.filters.length === 0) &&
     (!builderOptions.aggregates || builderOptions.aggregates.length === 0);
 
-  // --- COMPACT MODE (signalType configured) ---
-  if (signalType) {
+  // --- COMPACT MODE (single-table with signalType configured) ---
+  if (singleTableMode && signalType) {
     // Detect mismatch: carried-over query from a different datasource/signal
     const expectedQueryType = signalType === 'logs' ? QueryType.Logs
       : signalType === 'traces' ? QueryType.Traces

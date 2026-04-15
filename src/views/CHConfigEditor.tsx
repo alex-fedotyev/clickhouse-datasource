@@ -16,6 +16,7 @@ import {
   CHTracesConfig,
   AliasTableEntry,
   SignalType,
+  ConfigMode,
 } from 'types/config';
 import { gte as versionGte } from 'semver';
 import { ConfigSection, ConfigSubSection, DataSourceDescription } from 'components/experimental/ConfigSection';
@@ -245,28 +246,47 @@ export const ConfigEditor: React.FC<ConfigEditorProps> = (props) => {
         hasRequiredFields
       />
       <Divider />
-      <ConfigSection title="Signal Type" description="Optional: lock this datasource to a single signal type for a focused, compact query editor. Leave as 'All signals' for the full multi-signal experience.">
-        <Field label="Signal type" description="When set, the query editor shows a streamlined UI for this signal only">
-          <Select<SignalType | ''>
+      <ConfigSection title="Configuration Mode" description="Choose how this datasource is used. 'Single table' provides a focused, compact query editor for one table. 'All databases' gives full access to explore any database and table.">
+        <Field label="Mode">
+          <RadioButtonGroup<ConfigMode>
             options={[
-              { label: 'All signals (default)', value: '', description: 'Full query builder with all options' },
-              { label: 'Logs', value: 'logs', description: 'Compact log search + filters' },
-              { label: 'Traces', value: 'traces', description: 'Compact trace search + filters' },
-              { label: 'Metrics', value: 'metrics', description: 'Time series builder' },
+              { label: 'All databases', value: 'classic', description: 'Full query builder with database/table pickers and all signal types' },
+              { label: 'Single table', value: 'single-table', description: 'Focused on one table with compact query editor' },
             ]}
-            value={jsonData.signalType || ''}
+            value={jsonData.configMode || (jsonData.signalType ? 'single-table' : 'classic')}
             onChange={(v) => {
-              onOptionsChange({
-                ...options,
-                jsonData: {
-                  ...options.jsonData,
-                  signalType: (v.value || undefined) as SignalType | undefined,
-                },
-              });
+              const newJsonData = { ...options.jsonData, configMode: v };
+              // When switching to classic, clear signalType
+              if (v === 'classic') {
+                newJsonData.signalType = undefined;
+              }
+              onOptionsChange({ ...options, jsonData: newJsonData });
             }}
-            width={40}
           />
         </Field>
+        {(jsonData.configMode === 'single-table' || (!jsonData.configMode && jsonData.signalType)) && (
+          <Field label="Signal type" description="What kind of data does this table contain?">
+            <Select<SignalType>
+              options={[
+                { label: 'Logs', value: 'logs', description: 'Log search with severity, message, and attributes' },
+                { label: 'Traces', value: 'traces', description: 'Distributed tracing with spans and service maps' },
+                { label: 'Metrics', value: 'metrics', description: 'Time series metrics with aggregations' },
+              ]}
+              value={jsonData.signalType || 'logs'}
+              onChange={(v) => {
+                onOptionsChange({
+                  ...options,
+                  jsonData: {
+                    ...options.jsonData,
+                    configMode: 'single-table',
+                    signalType: v.value as SignalType,
+                  },
+                });
+              }}
+              width={30}
+            />
+          </Field>
+        )}
       </ConfigSection>
       <Divider />
       <ConfigSection title="Server">
@@ -453,124 +473,94 @@ export const ConfigEditor: React.FC<ConfigEditorProps> = (props) => {
         </Field>
       </ConfigSection>
 
-      {/* --- FOCUSED MODE: flat config with just the signal table + query timeouts --- */}
-      {jsonData.signalType === 'logs' && (
+      {/* --- SINGLE TABLE MODE: signal-specific schema config + query settings --- */}
+      {(jsonData.configMode === 'single-table' || (!jsonData.configMode && jsonData.signalType)) && jsonData.signalType && (
         <>
-          <Divider />
-          <LogsConfig
-            logsConfig={jsonData.logs}
-            onDefaultDatabaseChange={(db) => onLogsConfigChange('defaultDatabase', db)}
-            onDefaultTableChange={(table) => onLogsConfigChange('defaultTable', table)}
-            onOtelEnabledChange={(v) => onLogsConfigChange('otelEnabled', v)}
-            onOtelVersionChange={(v) => onLogsConfigChange('otelVersion', v)}
-            onFilterTimeColumnChange={(c) => onLogsConfigChange('filterTimeColumn', c)}
-            onTimeColumnChange={(c) => onLogsConfigChange('timeColumn', c)}
-            onLevelColumnChange={(c) => onLogsConfigChange('levelColumn', c)}
-            onMessageColumnChange={(c) => onLogsConfigChange('messageColumn', c)}
-            onSelectContextColumnsChange={(c) => onLogsConfigChange('selectContextColumns', c)}
-            onContextColumnsChange={(c) => onLogsConfigChange('contextColumns', c)}
-          />
-          <Divider />
-          <ConfigSection title="Query settings" isCollapsible isInitiallyOpen={false}>
-            <QuerySettingsConfig
-              dialTimeout={jsonData.dialTimeout}
-              queryTimeout={jsonData.queryTimeout}
-              connMaxLifetime={jsonData.connMaxLifetime}
-              maxIdleConns={jsonData.maxIdleConns}
-              maxOpenConns={jsonData.maxOpenConns}
-              validateSql={jsonData.validateSql}
-              onDialTimeoutChange={(e) => onUpdateDatasourceJsonDataOption(props, 'dialTimeout')(e)}
-              onQueryTimeoutChange={(e) => onUpdateDatasourceJsonDataOption(props, 'queryTimeout')(e)}
-              onConnMaxLifetimeChange={(e) => onUpdateDatasourceJsonDataOption(props, 'connMaxLifetime')(e)}
-              onConnMaxIdleConnsChange={(e) => onUpdateDatasourceJsonDataOption(props, 'maxIdleConns')(e)}
-              onConnMaxOpenConnsChange={(e) => onUpdateDatasourceJsonDataOption(props, 'maxOpenConns')(e)}
-              onValidateSqlChange={(e) => onSwitchToggle('validateSql', e.currentTarget.checked)}
-            />
-          </ConfigSection>
-        </>
-      )}
-      {jsonData.signalType === 'traces' && (
-        <>
-          <Divider />
-          <TracesConfig
-            tracesConfig={jsonData.traces}
-            onDefaultDatabaseChange={(db) => onTracesConfigChange('defaultDatabase', db)}
-            onDefaultTableChange={(table) => onTracesConfigChange('defaultTable', table)}
-            onOtelEnabledChange={(v) => onTracesConfigChange('otelEnabled', v)}
-            onOtelVersionChange={(v) => onTracesConfigChange('otelVersion', v)}
-            onTraceIdColumnChange={(c) => onTracesConfigChange('traceIdColumn', c)}
-            onSpanIdColumnChange={(c) => onTracesConfigChange('spanIdColumn', c)}
-            onOperationNameColumnChange={(c) => onTracesConfigChange('operationNameColumn', c)}
-            onParentSpanIdColumnChange={(c) => onTracesConfigChange('parentSpanIdColumn', c)}
-            onServiceNameColumnChange={(c) => onTracesConfigChange('serviceNameColumn', c)}
-            onDurationColumnChange={(c) => onTracesConfigChange('durationColumn', c)}
-            onDurationUnitChange={(c) => onTracesConfigChange('durationUnit', c)}
-            onStartTimeColumnChange={(c) => onTracesConfigChange('startTimeColumn', c)}
-            onTagsColumnChange={(c) => onTracesConfigChange('tagsColumn', c)}
-            onServiceTagsColumnChange={(c) => onTracesConfigChange('serviceTagsColumn', c)}
-            onKindColumnChange={(c) => onTracesConfigChange('kindColumn', c)}
-            onStatusCodeColumnChange={(c) => onTracesConfigChange('statusCodeColumn', c)}
-            onStatusMessageColumnChange={(c) => onTracesConfigChange('statusMessageColumn', c)}
-            onStateColumnChange={(c) => onTracesConfigChange('stateColumn', c)}
-            onInstrumentationLibraryNameColumnChange={(c) => onTracesConfigChange('instrumentationLibraryNameColumn', c)}
-            onInstrumentationLibraryVersionColumnChange={(c) => onTracesConfigChange('instrumentationLibraryVersionColumn', c)}
-            onFlattenNestedChange={(c) => onTracesConfigChange('flattenNested', c)}
-            onEventsColumnPrefixChange={(c) => onTracesConfigChange('traceEventsColumnPrefix', c)}
-            onLinksColumnPrefixChange={(c) => onTracesConfigChange('traceLinksColumnPrefix', c)}
-          />
-          <Divider />
-          <ConfigSection title="Query settings" isCollapsible isInitiallyOpen={false}>
-            <QuerySettingsConfig
-              dialTimeout={jsonData.dialTimeout}
-              queryTimeout={jsonData.queryTimeout}
-              connMaxLifetime={jsonData.connMaxLifetime}
-              maxIdleConns={jsonData.maxIdleConns}
-              maxOpenConns={jsonData.maxOpenConns}
-              validateSql={jsonData.validateSql}
-              onDialTimeoutChange={(e) => onUpdateDatasourceJsonDataOption(props, 'dialTimeout')(e)}
-              onQueryTimeoutChange={(e) => onUpdateDatasourceJsonDataOption(props, 'queryTimeout')(e)}
-              onConnMaxLifetimeChange={(e) => onUpdateDatasourceJsonDataOption(props, 'connMaxLifetime')(e)}
-              onConnMaxIdleConnsChange={(e) => onUpdateDatasourceJsonDataOption(props, 'maxIdleConns')(e)}
-              onConnMaxOpenConnsChange={(e) => onUpdateDatasourceJsonDataOption(props, 'maxOpenConns')(e)}
-              onValidateSqlChange={(e) => onSwitchToggle('validateSql', e.currentTarget.checked)}
-            />
-          </ConfigSection>
-        </>
-      )}
-      {jsonData.signalType === 'metrics' && (
-        <>
-          <Divider />
-          <ConfigSection title="Metrics">
-            <Field label="Default database" description="Database containing OTEL metrics tables">
-              <Input
-                width={40}
-                value={jsonData.metrics?.defaultDatabase || ''}
-                placeholder={jsonData.defaultDatabase || 'default'}
-                onChange={(e) => onMetricsConfigChange('defaultDatabase', e.currentTarget.value)}
+          {jsonData.signalType === 'logs' && (
+            <>
+              <Divider />
+              <LogsConfig
+                logsConfig={jsonData.logs}
+                onDefaultDatabaseChange={(db) => onLogsConfigChange('defaultDatabase', db)}
+                onDefaultTableChange={(table) => onLogsConfigChange('defaultTable', table)}
+                onOtelEnabledChange={(v) => onLogsConfigChange('otelEnabled', v)}
+                onOtelVersionChange={(v) => onLogsConfigChange('otelVersion', v)}
+                onFilterTimeColumnChange={(c) => onLogsConfigChange('filterTimeColumn', c)}
+                onTimeColumnChange={(c) => onLogsConfigChange('timeColumn', c)}
+                onLevelColumnChange={(c) => onLogsConfigChange('levelColumn', c)}
+                onMessageColumnChange={(c) => onLogsConfigChange('messageColumn', c)}
+                onSelectContextColumnsChange={(c) => onLogsConfigChange('selectContextColumns', c)}
+                onContextColumnsChange={(c) => onLogsConfigChange('contextColumns', c)}
               />
-            </Field>
-            <Field label="Default table" description="Default metrics table (e.g., otel_metrics_gauge)">
-              <Select
-                options={[
-                  { label: 'otel_metrics_gauge', value: 'otel_metrics_gauge' },
-                  { label: 'otel_metrics_sum', value: 'otel_metrics_sum' },
-                  { label: 'otel_metrics_histogram', value: 'otel_metrics_histogram' },
-                  { label: 'otel_metrics_summary', value: 'otel_metrics_summary' },
-                  { label: 'otel_metrics_exponential_histogram', value: 'otel_metrics_exponential_histogram' },
-                ]}
-                value={jsonData.metrics?.defaultTable || 'otel_metrics_gauge'}
-                onChange={(v) => onMetricsConfigChange('defaultTable', v.value || 'otel_metrics_gauge')}
-                width={40}
-                allowCustomValue
+            </>
+          )}
+          {jsonData.signalType === 'traces' && (
+            <>
+              <Divider />
+              <TracesConfig
+                tracesConfig={jsonData.traces}
+                onDefaultDatabaseChange={(db) => onTracesConfigChange('defaultDatabase', db)}
+                onDefaultTableChange={(table) => onTracesConfigChange('defaultTable', table)}
+                onOtelEnabledChange={(v) => onTracesConfigChange('otelEnabled', v)}
+                onOtelVersionChange={(v) => onTracesConfigChange('otelVersion', v)}
+                onTraceIdColumnChange={(c) => onTracesConfigChange('traceIdColumn', c)}
+                onSpanIdColumnChange={(c) => onTracesConfigChange('spanIdColumn', c)}
+                onOperationNameColumnChange={(c) => onTracesConfigChange('operationNameColumn', c)}
+                onParentSpanIdColumnChange={(c) => onTracesConfigChange('parentSpanIdColumn', c)}
+                onServiceNameColumnChange={(c) => onTracesConfigChange('serviceNameColumn', c)}
+                onDurationColumnChange={(c) => onTracesConfigChange('durationColumn', c)}
+                onDurationUnitChange={(c) => onTracesConfigChange('durationUnit', c)}
+                onStartTimeColumnChange={(c) => onTracesConfigChange('startTimeColumn', c)}
+                onTagsColumnChange={(c) => onTracesConfigChange('tagsColumn', c)}
+                onServiceTagsColumnChange={(c) => onTracesConfigChange('serviceTagsColumn', c)}
+                onKindColumnChange={(c) => onTracesConfigChange('kindColumn', c)}
+                onStatusCodeColumnChange={(c) => onTracesConfigChange('statusCodeColumn', c)}
+                onStatusMessageColumnChange={(c) => onTracesConfigChange('statusMessageColumn', c)}
+                onStateColumnChange={(c) => onTracesConfigChange('stateColumn', c)}
+                onInstrumentationLibraryNameColumnChange={(c) => onTracesConfigChange('instrumentationLibraryNameColumn', c)}
+                onInstrumentationLibraryVersionColumnChange={(c) => onTracesConfigChange('instrumentationLibraryVersionColumn', c)}
+                onFlattenNestedChange={(c) => onTracesConfigChange('flattenNested', c)}
+                onEventsColumnPrefixChange={(c) => onTracesConfigChange('traceEventsColumnPrefix', c)}
+                onLinksColumnPrefixChange={(c) => onTracesConfigChange('traceLinksColumnPrefix', c)}
               />
-            </Field>
-            <Field label="OTEL enabled" description="Enable OTEL metrics schema support">
-              <Switch
-                value={jsonData.metrics?.otelEnabled ?? true}
-                onChange={(e) => onMetricsConfigChange('otelEnabled', e.currentTarget.checked)}
-              />
-            </Field>
-          </ConfigSection>
+            </>
+          )}
+          {jsonData.signalType === 'metrics' && (
+            <>
+              <Divider />
+              <ConfigSection title="Metrics">
+                <Field label="Default database" description="Database containing OTEL metrics tables">
+                  <Input
+                    width={40}
+                    value={jsonData.metrics?.defaultDatabase || ''}
+                    placeholder={jsonData.defaultDatabase || 'default'}
+                    onChange={(e) => onMetricsConfigChange('defaultDatabase', e.currentTarget.value)}
+                  />
+                </Field>
+                <Field label="Default table" description="Default metrics table (e.g., otel_metrics_gauge)">
+                  <Select
+                    options={[
+                      { label: 'otel_metrics_gauge', value: 'otel_metrics_gauge' },
+                      { label: 'otel_metrics_sum', value: 'otel_metrics_sum' },
+                      { label: 'otel_metrics_histogram', value: 'otel_metrics_histogram' },
+                      { label: 'otel_metrics_summary', value: 'otel_metrics_summary' },
+                      { label: 'otel_metrics_exponential_histogram', value: 'otel_metrics_exponential_histogram' },
+                    ]}
+                    value={jsonData.metrics?.defaultTable || 'otel_metrics_gauge'}
+                    onChange={(v) => onMetricsConfigChange('defaultTable', v.value || 'otel_metrics_gauge')}
+                    width={40}
+                    allowCustomValue
+                  />
+                </Field>
+                <Field label="OTEL enabled" description="Enable OTEL metrics schema support">
+                  <Switch
+                    value={jsonData.metrics?.otelEnabled ?? true}
+                    onChange={(e) => onMetricsConfigChange('otelEnabled', e.currentTarget.checked)}
+                  />
+                </Field>
+              </ConfigSection>
+            </>
+          )}
           <Divider />
           <ConfigSection title="Query settings" isCollapsible isInitiallyOpen={false}>
             <QuerySettingsConfig
@@ -591,8 +581,8 @@ export const ConfigEditor: React.FC<ConfigEditorProps> = (props) => {
         </>
       )}
 
-      {/* --- MULTI-SIGNAL MODE: full Additional settings section --- */}
-      {!jsonData.signalType && (
+      {/* --- CLASSIC MODE: full Additional settings section --- */}
+      {(jsonData.configMode === 'classic' || (!jsonData.configMode && !jsonData.signalType)) && (
       <>
       <Divider />
       <ConfigSection

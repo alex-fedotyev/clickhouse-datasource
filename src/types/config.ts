@@ -4,6 +4,15 @@ import { TimeUnit } from './queryBuilder';
 
 export type SignalType = 'logs' | 'traces' | 'metrics';
 
+/**
+ * Configuration mode controls the datasource UI layout:
+ * - 'classic': Full multi-signal access to all databases/tables.
+ *   Per-signal defaults configured separately in Additional Settings.
+ * - 'single-table': Focused on one table. The user picks a signal type
+ *   and configures the schema inline. Compact query builder is the default.
+ */
+export type ConfigMode = 'classic' | 'single-table';
+
 export interface CHConfig extends DataSourceJsonData {
   /**
    * The version of the plugin this config was saved with
@@ -11,8 +20,14 @@ export interface CHConfig extends DataSourceJsonData {
   version: string;
 
   /**
-   * Optional single-signal mode. When set, the datasource shows a focused UI
-   * for this signal type only (no db/table/queryType pickers).
+   * Configuration mode: 'classic' (all databases) or 'single-table' (focused).
+   * Defaults to 'classic' when unset.
+   */
+  configMode?: ConfigMode;
+
+  /**
+   * Signal type for single-table mode. Declares what the configured table contains.
+   * Also used in classic mode for backward compat (legacy signalType field).
    */
   signalType?: SignalType;
 

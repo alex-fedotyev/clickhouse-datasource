@@ -22,10 +22,10 @@ export type CHQueryEditorProps = QueryEditorProps<Datasource, CHQuery, CHConfig>
 export const CHQueryEditor = (props: CHQueryEditorProps) => {
   const { datasource, query: savedQuery, onRunQuery } = props;
   const query = migrateCHQuery(savedQuery);
-  const signalType = datasource.getSignalType();
+  const singleTableMode = datasource.isSingleTableMode();
 
   // In focused mode, hide the EditorType switcher and Run button — CompactModeBar handles it
-  if (signalType && query.editorType !== EditorType.SQL) {
+  if (singleTableMode && query.editorType !== EditorType.SQL) {
     return <CHEditorByType {...props} query={query} />;
   }
 
@@ -67,10 +67,11 @@ const CHEditorByType = (props: CHQueryEditorProps) => {
 
   // Prevent trying to run empty query on load, or stale query after datasource switch
   const signalType = props.datasource.getSignalType();
+  const singleTable = props.datasource.isSingleTableMode();
   const shouldSkipChanges = useRef<boolean>(true);
   if (isBuilderOptionsRunnable(builderOptions)) {
-    // If datasource has a signalType, only allow onChange when queryType matches
-    if (signalType) {
+    // In single-table mode, only allow onChange when queryType matches the configured signal
+    if (singleTable && signalType) {
       const expectedType = signalType === 'logs' ? 'logs' : signalType === 'traces' ? 'traces' : signalType === 'metrics' ? 'timeseries' : undefined;
       shouldSkipChanges.current = builderOptions.queryType !== expectedType;
     } else {

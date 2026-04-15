@@ -1139,6 +1139,31 @@ export class Datasource
     return this.settings.jsonData.signalType;
   }
 
+  /**
+   * Returns the effective configuration mode.
+   * - If `configMode` is explicitly set, returns it.
+   * - If legacy `signalType` is set (but no configMode), treats as 'single-table' for backward compat.
+   * - Otherwise defaults to 'classic'.
+   */
+  getConfigMode(): import('types/config').ConfigMode {
+    const { configMode, signalType } = this.settings.jsonData;
+    if (configMode) {
+      return configMode;
+    }
+    // Backward compat: legacy signalType without configMode → single-table
+    if (signalType) {
+      return 'single-table';
+    }
+    return 'classic';
+  }
+
+  /**
+   * True when the datasource is configured for a single table with compact query builder.
+   */
+  isSingleTableMode(): boolean {
+    return this.getConfigMode() === 'single-table' && !!this.getSignalType();
+  }
+
   getDefaultDatabase(): string {
     return this.settings.jsonData.defaultDatabase || 'default';
   }
