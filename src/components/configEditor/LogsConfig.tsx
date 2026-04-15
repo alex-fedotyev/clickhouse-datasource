@@ -12,6 +12,10 @@ import { Switch } from 'components/queryBuilder/Switch';
 
 interface LogsConfigProps {
   logsConfig?: CHLogsConfig;
+  /** Override section title (defaults to labels) */
+  title?: string;
+  /** Override section description (defaults to labels) */
+  description?: string;
   onDefaultDatabaseChange: (v: string) => void;
   onDefaultTableChange: (v: string) => void;
   onOtelEnabledChange: (v: boolean) => void;
@@ -66,7 +70,7 @@ export const LogsConfig = (props: LogsConfigProps) => {
     onContextColumnsChange(columns.map((c) => c.trim()).filter((c) => c));
 
   return (
-    <ConfigSection title={labels.title} description={labels.description}>
+    <ConfigSection title={props.title || labels.title} description={props.description || labels.description}>
       <div id="logs-config" />
       <Field label={labels.defaultDatabase.label} description={labels.defaultDatabase.description}>
         <Input

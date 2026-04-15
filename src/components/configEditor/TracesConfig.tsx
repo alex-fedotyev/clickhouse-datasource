@@ -13,6 +13,10 @@ import { Switch } from 'components/queryBuilder/Switch';
 
 export interface TraceConfigProps {
   tracesConfig?: CHTracesConfig;
+  /** Override section title (defaults to labels) */
+  title?: string;
+  /** Override section description (defaults to labels) */
+  description?: string;
   onDefaultDatabaseChange: (v: string) => void;
   onDefaultTableChange: (v: string) => void;
   onOtelEnabledChange: (v: boolean) => void;
@@ -118,7 +122,7 @@ export const TracesConfig = (props: TraceConfigProps) => {
   }
 
   return (
-    <ConfigSection title={labels.title} description={labels.description}>
+    <ConfigSection title={props.title || labels.title} description={props.description || labels.description}>
       <div id="traces-config" />
       <Field label={labels.defaultDatabase.label} description={labels.defaultDatabase.description}>
         <Input

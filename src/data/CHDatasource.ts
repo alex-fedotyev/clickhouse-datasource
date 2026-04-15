@@ -1562,21 +1562,24 @@ export class Datasource
         ...request,
         targets,
       })
-        // Skip data link enrichment for supplementary queries (log volume, log sample).
-        // These go through Grafana's frame deep-clone which stack-overflows on the
-        // data link query objects. hideFromInspector is set by getDataProvider().
-        if (request.hideFromInspector) {
-          if (hasLogsVolumeTargets) {
-            return { ...res, data: splitLogsVolumeFrames(res.data, Datasource.logVolumePrefix) };
+      .pipe(
+        map((res: DataQueryResponse) => {
+          // Skip data link enrichment for supplementary queries (log volume, log sample).
+          // These go through Grafana's frame deep-clone which stack-overflows on the
+          // data link query objects. hideFromInspector is set by getDataProvider().
+          if (request.hideFromInspector) {
+            if (hasLogsVolumeTargets) {
+              return { ...res, data: splitLogsVolumeFrames(res.data, Datasource.logVolumePrefix) };
+            }
+            return res;
           }
-          return res;
-        }
-        const transformed = transformQueryResponseWithTraceAndLogLinks(this, request, res);
-        if (hasLogsVolumeTargets) {
-          return { ...transformed, data: splitLogsVolumeFrames(transformed.data, Datasource.logVolumePrefix) };
-        }
-        return transformed;
-      }));
+          const transformed = transformQueryResponseWithTraceAndLogLinks(this, request, res);
+          if (hasLogsVolumeTargets) {
+            return { ...transformed, data: splitLogsVolumeFrames(transformed.data, Datasource.logVolumePrefix) };
+          }
+          return transformed;
+        })
+      );
   }
 
   private runQuery(request: Partial<CHQuery>, options?: any): Promise<DataFrame> {

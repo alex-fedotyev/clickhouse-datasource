@@ -1,10 +1,12 @@
 import React, { ChangeEvent, useState } from 'react';
 import {
   DataSourcePluginOptionsEditorProps,
+  GrafanaTheme2,
   onUpdateDatasourceJsonDataOption,
   onUpdateDatasourceSecureJsonDataOption,
 } from '@grafana/data';
-import { RadioButtonGroup, Switch, Input, SecretInput, Button, Field, Alert, Stack, Select } from '@grafana/ui';
+import { RadioButtonGroup, Switch, Input, SecretInput, Button, Field, Alert, Stack, Select, Icon, useStyles2 } from '@grafana/ui';
+import { css } from '@emotion/css';
 import { CertificationKey } from '../components/ui/CertificationKey';
 import {
   CHConfig,
@@ -35,11 +37,32 @@ import * as trackingV1 from './trackingV1';
 
 export interface ConfigEditorProps extends DataSourcePluginOptionsEditorProps<CHConfig, CHSecureConfig> {}
 
+const getConnectionStyles = (theme: GrafanaTheme2) => ({
+  connectionHeader: css({
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(1),
+    cursor: 'pointer',
+    userSelect: 'none' as const,
+  }),
+  connectionStatus: css({
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: theme.spacing(0.5),
+    fontSize: theme.typography.bodySmall.fontSize,
+    marginLeft: 'auto',
+  }),
+  connectionBody: css({
+    marginTop: theme.spacing(2),
+  }),
+});
+
 export const ConfigEditor: React.FC<ConfigEditorProps> = (props) => {
   const { options, onOptionsChange } = props;
   const { jsonData, secureJsonFields } = options;
   const labels = allLabels.components.Config.ConfigEditor;
   const secureJsonData = (options.secureJsonData || {}) as CHSecureConfig;
+  const connStyles = useStyles2(getConnectionStyles);
   const hasTLSCACert = secureJsonFields && secureJsonFields.tlsCACert;
   const hasTLSClientCert = secureJsonFields && secureJsonFields.tlsClientCert;
   const hasTLSClientKey = secureJsonFields && secureJsonFields.tlsClientKey;
@@ -49,6 +72,11 @@ export const ConfigEditor: React.FC<ConfigEditorProps> = (props) => {
   ];
 
   useConfigDefaults(options, onOptionsChange);
+
+  // Connection section: collapsible with status indicator
+  const connectionComplete = Boolean(jsonData.host && jsonData.port);
+  const hasPassword = Boolean(secureJsonFields?.password || secureJsonData?.password);
+  const [connectionOpen, setConnectionOpen] = useState(!connectionComplete);
 
   const onPortChange = (port: string) => {
     onOptionsChange({
@@ -246,6 +274,214 @@ export const ConfigEditor: React.FC<ConfigEditorProps> = (props) => {
         hasRequiredFields
       />
       <Divider />
+      <div>
+        <div className={connStyles.connectionHeader} onClick={() => setConnectionOpen(!connectionOpen)}>
+          <Icon name={connectionOpen ? 'angle-down' : 'angle-right'} size="xl" />
+          <h3 style={{ margin: 0 }}>Connection</h3>
+          <span className={connStyles.connectionStatus}>
+            {connectionComplete ? (
+              <>
+                <Icon name="check-circle" size="md" style={{ color: '#73BF69' }} />
+                <span style={{ color: '#73BF69' }}>{jsonData.host}:{jsonData.port}{jsonData.secure ? ' (secure)' : ''}</span>
+              </>
+            ) : (
+              <>
+                <Icon name="exclamation-circle" size="md" style={{ color: '#FF5286' }} />
+                <span style={{ color: '#FF5286' }}>Not configured</span>
+              </>
+            )}
+          </span>
+        </div>
+        {connectionOpen && (
+          <div className={connStyles.connectionBody}>
+            <ConfigSection title="Server">
+              <Field
+                required
+                label={labels.serverAddress.label}
+                description={labels.serverAddress.tooltip}
+                invalid={!jsonData.host}
+                error={labels.serverAddress.error}
+              >
+                <Input
+                  name="host"
+                  width={80}
+                  value={jsonData.host || ''}
+                  onChange={(e) => onUpdateDatasourceJsonDataOption(props, 'host')(e)}
+                  label={labels.serverAddress.label}
+                  aria-label={labels.serverAddress.label}
+                  placeholder={labels.serverAddress.placeholder}
+                  onBlur={trackingV1.trackClickhouseConfigV1HostInput}
+                />
+              </Field>
+              <Field
+                required
+                label={labels.serverPort.label}
+                description={portDescription}
+                invalid={!jsonData.port}
+                error={labels.serverPort.error}
+              >
+                <Input
+                  name="port"
+                  width={40}
+                  type="number"
+                  value={jsonData.port || ''}
+                  onChange={(e) => onPortChange(e.currentTarget.value)}
+                  label={labels.serverPort.label}
+                  aria-label={labels.serverPort.label}
+                  placeholder={defaultPort}
+                  onBlur={(e) => trackingV1.trackClickhouseConfigV1PortInput({ port: e.currentTarget.value })}
+                />
+              </Field>
+
+              <Field label={labels.protocol.label} description={labels.protocol.tooltip}>
+                <RadioButtonGroup<Protocol>
+                  options={protocolOptions}
+                  disabledOptions={[]}
+                  value={jsonData.protocol || Protocol.Native}
+                  onChange={(e) => {
+                    trackingV1.trackClickhouseConfigV1NativeHttpToggleClicked({ nativeHttpToggle: e });
+                    onProtocolToggle(e!);
+                  }}
+                />
+              </Field>
+              <Field label={labels.secure.label} description={labels.secure.tooltip}>
+                <Switch
+                  id="secure"
+                  className="gf-form"
+                  value={jsonData.secure || false}
+                  onChange={(e) => {
+                    trackingV1.trackClickhouseConfigV1SecureConnectionToggleClicked({
+                      secureConnection: e.currentTarget.checked,
+                    });
+                    onSwitchToggle('secure', e.currentTarget.checked);
+                  }}
+                />
+              </Field>
+
+              {jsonData.protocol === Protocol.Http && (
+                <Field label={labels.path.label} description={labels.path.tooltip}>
+                  <Input
+                    value={jsonData.path || ''}
+                    name="path"
+                    width={80}
+                    onChange={onUpdateDatasourceJsonDataOption(props, 'path')}
+                    label={labels.path.label}
+                    aria-label={labels.path.label}
+                    placeholder={labels.path.placeholder}
+                  />
+                </Field>
+              )}
+            </ConfigSection>
+
+            {jsonData.protocol === Protocol.Http && (
+              <HttpHeadersConfig
+                headers={options.jsonData.httpHeaders}
+                forwardGrafanaHeaders={options.jsonData.forwardGrafanaHeaders}
+                secureFields={options.secureJsonFields}
+                onHttpHeadersChange={(headers) => onHttpHeadersChange(headers, options, onOptionsChange)}
+                onForwardGrafanaHeadersChange={(forwardGrafanaHeaders) =>
+                  onSwitchToggle('forwardGrafanaHeaders', forwardGrafanaHeaders)
+                }
+              />
+            )}
+
+            <Divider />
+            <ConfigSection title="TLS / SSL Settings">
+              <Field label={labels.tlsSkipVerify.label} description={labels.tlsSkipVerify.tooltip}>
+                <Switch
+                  className="gf-form"
+                  value={jsonData.tlsSkipVerify || false}
+                  onChange={(e) => {
+                    trackingV1.trackClickhouseConfigV1SkipTLSVerifyToggleClicked({
+                      skipTlsVerifyToggle: e.currentTarget.checked,
+                    });
+                    onTLSSettingsChange('tlsSkipVerify', e.currentTarget.checked);
+                  }}
+                />
+              </Field>
+              <Field label={labels.tlsClientAuth.label} description={labels.tlsClientAuth.tooltip}>
+                <Switch
+                  className="gf-form"
+                  value={jsonData.tlsAuth || false}
+                  onChange={(e) => {
+                    trackingV1.trackClickhouseConfigV1TLSClientAuthToggleClicked({
+                      clientAuthToggle: e.currentTarget.checked,
+                    });
+                    onTLSSettingsChange('tlsAuth', e.currentTarget.checked);
+                  }}
+                />
+              </Field>
+              <Field label={labels.tlsAuthWithCACert.label} description={labels.tlsAuthWithCACert.tooltip}>
+                <Switch
+                  className="gf-form"
+                  value={jsonData.tlsAuthWithCACert || false}
+                  onChange={(e) => {
+                    trackingV1.trackClickhouseConfigV1WithCACertToggleClicked({ caCertToggle: e.currentTarget.checked });
+                    onTLSSettingsChange('tlsAuthWithCACert', e.currentTarget.checked);
+                  }}
+                />
+              </Field>
+              {jsonData.tlsAuthWithCACert && (
+                <CertificationKey
+                  hasCert={!!hasTLSCACert}
+                  onChange={(e) => onCertificateChangeFactory('tlsCACert', e.currentTarget.value)}
+                  placeholder={labels.tlsCACert.placeholder}
+                  label={labels.tlsCACert.label}
+                  onClick={() => onResetClickFactory('tlsCACert')}
+                />
+              )}
+              {jsonData.tlsAuth && (
+                <>
+                  <CertificationKey
+                    hasCert={!!hasTLSClientCert}
+                    onChange={(e) => onCertificateChangeFactory('tlsClientCert', e.currentTarget.value)}
+                    placeholder={labels.tlsClientCert.placeholder}
+                    label={labels.tlsClientCert.label}
+                    onClick={() => onResetClickFactory('tlsClientCert')}
+                  />
+                  <CertificationKey
+                    hasCert={!!hasTLSClientKey}
+                    placeholder={labels.tlsClientKey.placeholder}
+                    label={labels.tlsClientKey.label}
+                    onChange={(e) => onCertificateChangeFactory('tlsClientKey', e.currentTarget.value)}
+                    onClick={() => onResetClickFactory('tlsClientKey')}
+                  />
+                </>
+              )}
+            </ConfigSection>
+
+            <Divider />
+            <ConfigSection title="Credentials">
+              <Field label={labels.username.label} description={labels.username.tooltip}>
+                <Input
+                  name="user"
+                  width={40}
+                  value={jsonData.username || ''}
+                  onChange={onUpdateDatasourceJsonDataOption(props, 'username')}
+                  label={labels.username.label}
+                  aria-label={labels.username.label}
+                  placeholder={labels.username.placeholder}
+                />
+              </Field>
+              <Field label={labels.password.label} description={labels.password.tooltip}>
+                <SecretInput
+                  name="pwd"
+                  width={40}
+                  label={labels.password.label}
+                  aria-label={labels.password.label}
+                  placeholder={labels.password.placeholder}
+                  value={secureJsonData.password || ''}
+                  isConfigured={(secureJsonFields && secureJsonFields.password) as boolean}
+                  onReset={onResetPassword}
+                  onChange={onUpdateDatasourceSecureJsonDataOption(props, 'password')}
+                />
+              </Field>
+            </ConfigSection>
+          </div>
+        )}
+      </div>
+
+      <Divider />
       <ConfigSection title="Configuration Mode" description="Choose how this datasource is used. 'Single table' provides a focused, compact query editor for one table. 'All databases' gives full access to explore any database and table.">
         <Field label="Mode">
           <RadioButtonGroup<ConfigMode>
@@ -288,190 +524,6 @@ export const ConfigEditor: React.FC<ConfigEditorProps> = (props) => {
           </Field>
         )}
       </ConfigSection>
-      <Divider />
-      <ConfigSection title="Server">
-        <Field
-          required
-          label={labels.serverAddress.label}
-          description={labels.serverAddress.tooltip}
-          invalid={!jsonData.host}
-          error={labels.serverAddress.error}
-        >
-          <Input
-            name="host"
-            width={80}
-            value={jsonData.host || ''}
-            onChange={(e) => onUpdateDatasourceJsonDataOption(props, 'host')(e)}
-            label={labels.serverAddress.label}
-            aria-label={labels.serverAddress.label}
-            placeholder={labels.serverAddress.placeholder}
-            onBlur={trackingV1.trackClickhouseConfigV1HostInput}
-          />
-        </Field>
-        <Field
-          required
-          label={labels.serverPort.label}
-          description={portDescription}
-          invalid={!jsonData.port}
-          error={labels.serverPort.error}
-        >
-          <Input
-            name="port"
-            width={40}
-            type="number"
-            value={jsonData.port || ''}
-            onChange={(e) => onPortChange(e.currentTarget.value)}
-            label={labels.serverPort.label}
-            aria-label={labels.serverPort.label}
-            placeholder={defaultPort}
-            onBlur={(e) => trackingV1.trackClickhouseConfigV1PortInput({ port: e.currentTarget.value })}
-          />
-        </Field>
-
-        <Field label={labels.protocol.label} description={labels.protocol.tooltip}>
-          <RadioButtonGroup<Protocol>
-            options={protocolOptions}
-            disabledOptions={[]}
-            value={jsonData.protocol || Protocol.Native}
-            onChange={(e) => {
-              trackingV1.trackClickhouseConfigV1NativeHttpToggleClicked({ nativeHttpToggle: e });
-              onProtocolToggle(e!);
-            }}
-          />
-        </Field>
-        <Field label={labels.secure.label} description={labels.secure.tooltip}>
-          <Switch
-            id="secure"
-            className="gf-form"
-            value={jsonData.secure || false}
-            onChange={(e) => {
-              trackingV1.trackClickhouseConfigV1SecureConnectionToggleClicked({
-                secureConnection: e.currentTarget.checked,
-              });
-              onSwitchToggle('secure', e.currentTarget.checked);
-            }}
-          />
-        </Field>
-
-        {jsonData.protocol === Protocol.Http && (
-          <Field label={labels.path.label} description={labels.path.tooltip}>
-            <Input
-              value={jsonData.path || ''}
-              name="path"
-              width={80}
-              onChange={onUpdateDatasourceJsonDataOption(props, 'path')}
-              label={labels.path.label}
-              aria-label={labels.path.label}
-              placeholder={labels.path.placeholder}
-            />
-          </Field>
-        )}
-      </ConfigSection>
-
-      {jsonData.protocol === Protocol.Http && (
-        <HttpHeadersConfig
-          headers={options.jsonData.httpHeaders}
-          forwardGrafanaHeaders={options.jsonData.forwardGrafanaHeaders}
-          secureFields={options.secureJsonFields}
-          onHttpHeadersChange={(headers) => onHttpHeadersChange(headers, options, onOptionsChange)}
-          onForwardGrafanaHeadersChange={(forwardGrafanaHeaders) =>
-            onSwitchToggle('forwardGrafanaHeaders', forwardGrafanaHeaders)
-          }
-        />
-      )}
-
-      <Divider />
-      <ConfigSection title="TLS / SSL Settings">
-        <Field label={labels.tlsSkipVerify.label} description={labels.tlsSkipVerify.tooltip}>
-          <Switch
-            className="gf-form"
-            value={jsonData.tlsSkipVerify || false}
-            onChange={(e) => {
-              trackingV1.trackClickhouseConfigV1SkipTLSVerifyToggleClicked({
-                skipTlsVerifyToggle: e.currentTarget.checked,
-              });
-              onTLSSettingsChange('tlsSkipVerify', e.currentTarget.checked);
-            }}
-          />
-        </Field>
-        <Field label={labels.tlsClientAuth.label} description={labels.tlsClientAuth.tooltip}>
-          <Switch
-            className="gf-form"
-            value={jsonData.tlsAuth || false}
-            onChange={(e) => {
-              trackingV1.trackClickhouseConfigV1TLSClientAuthToggleClicked({
-                clientAuthToggle: e.currentTarget.checked,
-              });
-              onTLSSettingsChange('tlsAuth', e.currentTarget.checked);
-            }}
-          />
-        </Field>
-        <Field label={labels.tlsAuthWithCACert.label} description={labels.tlsAuthWithCACert.tooltip}>
-          <Switch
-            className="gf-form"
-            value={jsonData.tlsAuthWithCACert || false}
-            onChange={(e) => {
-              trackingV1.trackClickhouseConfigV1WithCACertToggleClicked({ caCertToggle: e.currentTarget.checked });
-              onTLSSettingsChange('tlsAuthWithCACert', e.currentTarget.checked);
-            }}
-          />
-        </Field>
-        {jsonData.tlsAuthWithCACert && (
-          <CertificationKey
-            hasCert={!!hasTLSCACert}
-            onChange={(e) => onCertificateChangeFactory('tlsCACert', e.currentTarget.value)}
-            placeholder={labels.tlsCACert.placeholder}
-            label={labels.tlsCACert.label}
-            onClick={() => onResetClickFactory('tlsCACert')}
-          />
-        )}
-        {jsonData.tlsAuth && (
-          <>
-            <CertificationKey
-              hasCert={!!hasTLSClientCert}
-              onChange={(e) => onCertificateChangeFactory('tlsClientCert', e.currentTarget.value)}
-              placeholder={labels.tlsClientCert.placeholder}
-              label={labels.tlsClientCert.label}
-              onClick={() => onResetClickFactory('tlsClientCert')}
-            />
-            <CertificationKey
-              hasCert={!!hasTLSClientKey}
-              placeholder={labels.tlsClientKey.placeholder}
-              label={labels.tlsClientKey.label}
-              onChange={(e) => onCertificateChangeFactory('tlsClientKey', e.currentTarget.value)}
-              onClick={() => onResetClickFactory('tlsClientKey')}
-            />
-          </>
-        )}
-      </ConfigSection>
-
-      <Divider />
-      <ConfigSection title="Credentials">
-        <Field label={labels.username.label} description={labels.username.tooltip}>
-          <Input
-            name="user"
-            width={40}
-            value={jsonData.username || ''}
-            onChange={onUpdateDatasourceJsonDataOption(props, 'username')}
-            label={labels.username.label}
-            aria-label={labels.username.label}
-            placeholder={labels.username.placeholder}
-          />
-        </Field>
-        <Field label={labels.password.label} description={labels.password.tooltip}>
-          <SecretInput
-            name="pwd"
-            width={40}
-            label={labels.password.label}
-            aria-label={labels.password.label}
-            placeholder={labels.password.placeholder}
-            value={secureJsonData.password || ''}
-            isConfigured={(secureJsonFields && secureJsonFields.password) as boolean}
-            onReset={onResetPassword}
-            onChange={onUpdateDatasourceSecureJsonDataOption(props, 'password')}
-          />
-        </Field>
-      </ConfigSection>
 
       {/* --- SINGLE TABLE MODE: signal-specific schema config + query settings --- */}
       {(jsonData.configMode === 'single-table' || (!jsonData.configMode && jsonData.signalType)) && jsonData.signalType && (
@@ -480,6 +532,8 @@ export const ConfigEditor: React.FC<ConfigEditorProps> = (props) => {
             <>
               <Divider />
               <LogsConfig
+                title="Logs Table & Schema"
+                description="Configure the database, table, and column mappings for log queries."
                 logsConfig={jsonData.logs}
                 onDefaultDatabaseChange={(db) => onLogsConfigChange('defaultDatabase', db)}
                 onDefaultTableChange={(table) => onLogsConfigChange('defaultTable', table)}
@@ -498,6 +552,8 @@ export const ConfigEditor: React.FC<ConfigEditorProps> = (props) => {
             <>
               <Divider />
               <TracesConfig
+                title="Traces Table & Schema"
+                description="Configure the database, table, and column mappings for trace queries."
                 tracesConfig={jsonData.traces}
                 onDefaultDatabaseChange={(db) => onTracesConfigChange('defaultDatabase', db)}
                 onDefaultTableChange={(table) => onTracesConfigChange('defaultTable', table)}
@@ -528,7 +584,7 @@ export const ConfigEditor: React.FC<ConfigEditorProps> = (props) => {
           {jsonData.signalType === 'metrics' && (
             <>
               <Divider />
-              <ConfigSection title="Metrics">
+              <ConfigSection title="Metrics Table & Schema">
                 <Field label="Default database" description="Database containing OTEL metrics tables">
                   <Input
                     width={40}
