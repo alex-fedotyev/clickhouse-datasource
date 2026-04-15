@@ -492,9 +492,12 @@ export const ConfigEditor: React.FC<ConfigEditorProps> = (props) => {
             value={jsonData.configMode || (jsonData.signalType ? 'single-table' : 'classic')}
             onChange={(v) => {
               const newJsonData = { ...options.jsonData, configMode: v };
-              // When switching to classic, clear signalType
               if (v === 'classic') {
+                // When switching to classic, clear signalType
                 newJsonData.signalType = undefined;
+              } else if (v === 'single-table' && !newJsonData.signalType) {
+                // When switching to single-table, default to logs if no signal type set
+                newJsonData.signalType = 'logs';
               }
               onOptionsChange({ ...options, jsonData: newJsonData });
             }}
