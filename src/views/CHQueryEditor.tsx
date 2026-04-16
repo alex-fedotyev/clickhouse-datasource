@@ -1,9 +1,9 @@
-import React, { useCallback, useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { QueryEditorProps } from '@grafana/data';
 import { Datasource } from 'data/CHDatasource';
 import { EditorTypeSwitcher } from 'components/queryBuilder/EditorTypeSwitcher';
 import { styles } from 'styles';
-import { Button } from '@grafana/ui';
+import { Button, ConfirmModal, Tooltip } from '@grafana/ui';
 import { CHBuilderQuery, CHQuery, EditorType } from 'types/sql';
 import { CHConfig } from 'types/config';
 import { QueryBuilder } from 'components/queryBuilder/QueryBuilder';
@@ -24,11 +24,22 @@ export const CHQueryEditor = (props: CHQueryEditorProps) => {
   const query = migrateCHQuery(savedQuery);
   const singleTableMode = datasource.isSingleTableMode();
 
-  // In focused mode, hide the EditorType switcher and Run button — CompactModeBar handles it
-  if (singleTableMode && query.editorType !== EditorType.SQL) {
+  // In single-table mode: compact layout for both builder and SQL
+  if (singleTableMode) {
+    if (query.editorType === EditorType.SQL) {
+      // Compact SQL mode — minimal header, no QueryTypeSwitcher/EditorTypeSwitcher
+      return (
+        <CompactSqlMode
+          {...props}
+          query={query}
+        />
+      );
+    }
+    // Builder mode — CompactModeBar handles the header
     return <CHEditorByType {...props} query={query} />;
   }
 
+  // Classic mode: full EditorTypeSwitcher + Run button
   return (
     <>
       <div className={'gf-form ' + styles.QueryEditor.queryType}>
@@ -138,5 +149,66 @@ const CHEditorByType = (props: CHQueryEditorProps) => {
       app={app}
       onSwitchToSql={onSwitchToSql}
     />
+  );
+};
+
+/**
+ * Compact SQL mode for single-table datasources.
+ * Renders the SqlEditor without QueryTypeSwitcher/EditorTypeSwitcher,
+ * with a simple "Back to Query Builder" button that resets the query.
+ */
+const CompactSqlMode = (props: CHQueryEditorProps) => {
+  const { query, onChange, onRunQuery } = props;
+  const [showConfirm, setShowConfirm] = useState(false);
+
+  const onSwitchToBuilder = () => {
+    // Reset to empty builder state — CompactQueryEditor will reinitialize from OTEL config
+    onChange({
+      ...query,
+      editorType: EditorType.Builder,
+      rawSql: '',
+      builderOptions: {
+        database: '',
+        table: '',
+        queryType: 0 as any,
+        mode: 0 as any,
+        columns: [],
+        filters: [],
+      },
+    } as CHQuery);
+  };
+
+  return (
+    <>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0' }}>
+        <Tooltip content="Switch back to query builder (query will reset)">
+          <Button
+            icon="arrow-left"
+            variant="secondary"
+            size="sm"
+            fill="text"
+            onClick={() => setShowConfirm(true)}
+          >
+            Query Builder
+          </Button>
+        </Tooltip>
+      </div>
+      <div data-testid="query-editor-section-sql">
+        <SqlEditor {...props} compact />
+      </div>
+      <ConfirmModal
+        isOpen={showConfirm}
+        title="Switch to Query Builder?"
+        body="The current SQL cannot be converted back to the visual builder. Switching will start a new query for the configured signal type."
+        confirmText="Switch to Builder"
+        dismissText="Stay in SQL"
+        icon="exclamation-triangle"
+        onConfirm={() => {
+          setShowConfirm(false);
+          onSwitchToBuilder();
+        }}
+        onDismiss={() => setShowConfirm(false)}
+      />
+    </>
   );
 };

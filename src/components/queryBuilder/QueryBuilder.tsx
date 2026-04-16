@@ -392,6 +392,7 @@ const CompactQueryEditor = (props: CompactQueryEditorProps) => {
 
   return (
     <div data-testid="query-editor-compact">
+      {/* Row 1: Signal-specific content (search for logs, metrics bar, mode dropdown) */}
       <CompactModeBar
         datasource={datasource}
         signalType={signalType}
@@ -400,9 +401,6 @@ const CompactQueryEditor = (props: CompactQueryEditorProps) => {
         searchText={searchText}
         onSearchChange={onSearchChange}
         onSearchSubmit={() => {}}
-        onSwitchToSql={handleSwitchToSql}
-        onToggleAdvanced={() => setAdvancedOpen(!advancedOpen)}
-        advancedOpen={advancedOpen}
       />
 
       {isMetrics && (
@@ -415,6 +413,7 @@ const CompactQueryEditor = (props: CompactQueryEditorProps) => {
         />
       )}
 
+      {/* Row 2: Filters + action buttons (common for all signals) */}
       <CompactFilterBar
         datasource={datasource}
         database={builderOptions.database || ''}
@@ -427,8 +426,12 @@ const CompactQueryEditor = (props: CompactQueryEditorProps) => {
             filters,
           }));
         }}
+        onToggleAdvanced={() => setAdvancedOpen(!advancedOpen)}
+        advancedOpen={advancedOpen}
+        onSwitchToSql={handleSwitchToSql}
       />
 
+      {/* Row 3: Advanced options (toggled by gear) */}
       {advancedOpen && (
         <CompactAdvanced
           builderOptions={builderOptions}
@@ -442,6 +445,7 @@ const CompactQueryEditor = (props: CompactQueryEditorProps) => {
         />
       )}
 
+      {/* Row 4: SQL preview (common) */}
       <SqlPreview sql={generatedSql} onSwitchToSql={handleSwitchToSql} />
     </div>
   );

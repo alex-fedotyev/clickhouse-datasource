@@ -15,7 +15,10 @@ import { pluginVersion } from 'utils/version';
 import { useSchemaSuggestionsProvider } from 'hooks/useSchemaSuggestionsProvider';
 import { QueryToolbox } from './QueryToolbox';
 
-type SqlEditorProps = QueryEditorProps<Datasource, CHQuery, CHConfig>;
+type SqlEditorProps = QueryEditorProps<Datasource, CHQuery, CHConfig> & {
+  /** When true, hides QueryTypeSwitcher — used in single-table compact mode */
+  compact?: boolean;
+};
 
 function setupAutoSize(editor: monacoTypes.editor.IStandaloneCodeEditor) {
   const container = editor.getDomNode();
@@ -110,9 +113,11 @@ export const SqlEditor = (props: SqlEditorProps) => {
 
   return (
     <>
-      <div className={'gf-form ' + styles.QueryEditor.queryType}>
-        <QueryTypeSwitcher queryType={queryType} onChange={(queryType) => saveChanges({ queryType })} sqlEditor />
-      </div>
+      {!props.compact && (
+        <div className={'gf-form ' + styles.QueryEditor.queryType}>
+          <QueryTypeSwitcher queryType={queryType} onChange={(queryType) => saveChanges({ queryType })} sqlEditor />
+        </div>
+      )}
       <div className={styles.Common.wrapper}>
         <CodeEditor
           aria-label="SQL Editor"

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { css } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
-import { useStyles2, Icon, Input, Select, Tooltip, Button } from '@grafana/ui';
+import { useStyles2, Icon, Input, Select } from '@grafana/ui';
 import { Datasource } from 'data/CHDatasource';
 import { SignalType } from 'types/config';
 
@@ -17,9 +17,6 @@ interface CompactModeBarProps {
   searchText: string;
   onSearchChange: (text: string) => void;
   onSearchSubmit: () => void;
-  onSwitchToSql: () => void;
-  onToggleAdvanced?: () => void;
-  advancedOpen?: boolean;
 }
 
 const getStyles = (theme: GrafanaTheme2) => ({
@@ -32,12 +29,6 @@ const getStyles = (theme: GrafanaTheme2) => ({
   searchWrapper: css`
     flex: 1;
     min-width: 200px;
-  `,
-  actions: css`
-    display: flex;
-    align-items: center;
-    gap: ${theme.spacing(0.5)};
-    flex-shrink: 0;
   `,
 });
 
@@ -82,6 +73,15 @@ export function getModeOptions(
   return options;
 }
 
+/**
+ * Signal-specific row of the compact query editor.
+ * - Logs: search input
+ * - Traces: nothing (returns null)
+ * - Metrics: handled separately by CompactMetricsBar
+ * - Multi-signal: mode dropdown
+ *
+ * Action buttons (gear, history, SQL) are NOT here — they live in CompactFilterBar.
+ */
 export const CompactModeBar = (props: CompactModeBarProps) => {
   const {
     datasource,
@@ -91,17 +91,12 @@ export const CompactModeBar = (props: CompactModeBarProps) => {
     searchText,
     onSearchChange,
     onSearchSubmit,
-    onSwitchToSql,
-    onToggleAdvanced,
-    advancedOpen,
   } = props;
   const styles = useStyles2(getStyles);
   const [localSearch, setLocalSearch] = useState(searchText);
   const modeOptions = getModeOptions(signalType, datasource);
   const showModeDropdown = !signalType && modeOptions.length > 1;
   const isLogs = mode === 'otel-logs';
-  const isTraces = mode === 'otel-traces';
-  const isMetrics = mode === 'otel-metrics';
 
   useEffect(() => {
     setLocalSearch(searchText);
@@ -113,6 +108,11 @@ export const CompactModeBar = (props: CompactModeBarProps) => {
       onSearchSubmit();
     }
   };
+
+  // Only render if there's signal-specific content to show
+  if (!showModeDropdown && !isLogs) {
+    return null;
+  }
 
   return (
     <div className={styles.bar} data-testid="compact-mode-bar">
@@ -138,46 +138,6 @@ export const CompactModeBar = (props: CompactModeBarProps) => {
           />
         </div>
       )}
-
-      <div className={styles.actions}>
-        {onToggleAdvanced && (
-          <Tooltip content={advancedOpen ? 'Hide advanced options' : 'Show advanced options'}>
-            <Button
-              icon="cog"
-              aria-label={advancedOpen ? 'Hide advanced options' : 'Show advanced options'}
-              variant="secondary"
-              size="sm"
-              fill={advancedOpen ? 'solid' : 'text'}
-              onClick={onToggleAdvanced}
-            />
-          </Tooltip>
-        )}
-        <Tooltip content="Open query history (Ctrl+H in Explore)">
-          <Button
-            icon="history"
-            aria-label="Open query history"
-            variant="secondary"
-            size="sm"
-            fill="text"
-            onClick={() => {
-              // Trigger Grafana's built-in query history panel via keyboard shortcut
-              const event = new KeyboardEvent('keydown', { key: 'h', ctrlKey: true, bubbles: true });
-              document.dispatchEvent(event);
-            }}
-          />
-        </Tooltip>
-        <Tooltip content="Switch to SQL editor">
-          <Button
-            icon="pen"
-            variant="secondary"
-            size="sm"
-            fill="text"
-            onClick={onSwitchToSql}
-          >
-            SQL
-          </Button>
-        </Tooltip>
-      </div>
     </div>
   );
 };
