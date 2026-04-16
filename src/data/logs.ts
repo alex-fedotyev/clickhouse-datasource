@@ -1,4 +1,6 @@
-import { DataFrame, FieldType, ScopedVars } from '@grafana/data';
+import { DataFrame, FieldType, LogLevel, ScopedVars } from '@grafana/data';
+import { config } from '@grafana/runtime';
+import { colors } from '@grafana/ui';
 import { partition } from 'lodash';
 
 const MILLISECOND = 1;
