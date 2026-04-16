@@ -17,8 +17,7 @@ interface CompactFilterBarProps {
   /** Toggle advanced options (order by, limit) */
   onToggleAdvanced?: () => void;
   advancedOpen?: boolean;
-  /** Switch to raw SQL editor */
-  onSwitchToSql?: () => void;
+
 }
 
 const getStyles = (theme: GrafanaTheme2) => ({
@@ -53,7 +52,7 @@ const getStyles = (theme: GrafanaTheme2) => ({
 export const CompactFilterBar = (props: CompactFilterBarProps) => {
   const {
     datasource, database, table, filters, allColumns, onFiltersChange,
-    onToggleAdvanced, advancedOpen, onSwitchToSql,
+    onToggleAdvanced, advancedOpen,
   } = props;
   const styles = useStyles2(getStyles);
   const [showPopover, setShowPopover] = useState(false);
@@ -108,19 +107,7 @@ export const CompactFilterBar = (props: CompactFilterBarProps) => {
               }}
             />
           </Tooltip>
-          {onSwitchToSql && (
-            <Tooltip content="Switch to SQL editor">
-              <Button
-                icon="pen"
-                variant="secondary"
-                size="sm"
-                fill="text"
-                onClick={onSwitchToSql}
-              >
-                SQL
-              </Button>
-            </Tooltip>
-          )}
+
         </div>
       </div>
       {showPopover && (

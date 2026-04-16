@@ -428,7 +428,6 @@ const CompactQueryEditor = (props: CompactQueryEditorProps) => {
         }}
         onToggleAdvanced={() => setAdvancedOpen(!advancedOpen)}
         advancedOpen={advancedOpen}
-        onSwitchToSql={handleSwitchToSql}
       />
 
       {/* Row 3: Advanced options (toggled by gear) */}
