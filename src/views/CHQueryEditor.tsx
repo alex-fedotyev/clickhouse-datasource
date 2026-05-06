@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useRef } from 'react';
 import { QueryEditorProps } from '@grafana/data';
 import { Datasource } from 'data/CHDatasource';
 import { EditorTypeSwitcher } from 'components/queryBuilder/EditorTypeSwitcher';
+// HARNESS-ONLY: do not merge — renders SchemaPicker at each depth for visual review.
+import { SchemaPickerHarness } from 'components/queryBuilder/SchemaPickerHarness';
 import { styles } from 'styles';
 import { Button } from '@grafana/ui';
 import { CHBuilderQuery, CHQuery, EditorType } from 'types/sql';
@@ -27,6 +29,8 @@ export const CHQueryEditor = (props: CHQueryEditorProps) => {
 
   return (
     <>
+      {/* HARNESS-ONLY: do not merge */}
+      <SchemaPickerHarness datasource={datasource} />
       <div className={'gf-form ' + styles.QueryEditor.queryType}>
         <EditorTypeSwitcher {...props} query={query} datasource={datasource} />
         <Button onClick={() => onRunQuery()}>Run Query</Button>
