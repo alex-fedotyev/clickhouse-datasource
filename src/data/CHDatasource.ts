@@ -29,7 +29,7 @@ import { cloneDeep, isEmpty, isString } from 'lodash';
 import otel from 'otel';
 import { createElement as createReactElement, ReactNode } from 'react';
 import { firstValueFrom, map, Observable } from 'rxjs';
-import { CHConfig } from 'types/config';
+import { CHConfig, ConfigMode, SignalType } from 'types/config';
 import {
   AggregateColumn,
   AggregateType,
@@ -407,7 +407,7 @@ export class Datasource
       }
 
       // Build filter entries for all tables
-      const tableFilters = tableNames.map(tableName => `'${tableName}': '${filterStr}'`).join(', ');
+      const tableFilters = tableNames.map((tableName) => `'${tableName}': '${filterStr}'`).join(', ');
       return `additional_table_filters={${tableFilters}}`;
     });
   }
@@ -602,6 +602,22 @@ export class Datasource
     return this.settings.jsonData.defaultTable;
   }
 
+  getSignalType(): SignalType | undefined {
+    return this.settings.jsonData.signalType;
+  }
+
+  getConfigMode(): ConfigMode {
+    if (this.settings.jsonData.configMode) {
+      return this.settings.jsonData.configMode;
+    }
+
+    return this.getSignalType() ? 'single-table' : 'classic';
+  }
+
+  isSingleTableMode(): boolean {
+    return this.getConfigMode() === 'single-table' && Boolean(this.getSignalType());
+  }
+
   getDefaultLogsDatabase(): string | undefined {
     return this.settings.jsonData.logs?.defaultDatabase;
   }
@@ -767,6 +783,16 @@ export class Datasource
    */
   async fetchUniqueMapKeys(mapColumn: string, db: string, table: string): Promise<string[]> {
     const rawSql = `SELECT DISTINCT arrayJoin(${mapColumn}.keys) as keys FROM "${db}"."${table}" LIMIT 1000`;
+    return this.fetchData(rawSql);
+  }
+
+  async fetchDistinctValues(column: string, db: string, table: string): Promise<string[]> {
+    const rawSql = `SELECT DISTINCT "${column}" FROM "${db}"."${table}" WHERE "${column}" IS NOT NULL LIMIT 1000`;
+    return this.fetchData(rawSql);
+  }
+
+  async fetchDistinctMapValues(mapColumn: string, mapKey: string, db: string, table: string): Promise<string[]> {
+    const rawSql = `SELECT DISTINCT ${mapColumn}['${mapKey}'] FROM "${db}"."${table}" WHERE mapContains(${mapColumn}, '${mapKey}') LIMIT 1000`;
     return this.fetchData(rawSql);
   }
 
