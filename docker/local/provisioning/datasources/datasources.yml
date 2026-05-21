@@ -1,0 +1,80 @@
+# Datasource provisioning for the local Grafana test stack.
+#
+# All four datasources point at the public ClickHouse OpenTelemetry
+# demo at sql-clickhouse.clickhouse.com (otel_v2 database, otel_demo
+# read-only user). The official marketplace plugin and the PR build
+# live side by side so behaviour can be compared on the same dataset.
+
+apiVersion: 1
+
+deleteDatasources:
+  - { name: ClickHouse (Official), orgId: 1 }
+  - { name: ClickHouse - Logs,     orgId: 1 }
+  - { name: ClickHouse - Traces,   orgId: 1 }
+  - { name: ClickHouse,            orgId: 1 }
+
+datasources:
+
+  # 1. Stock marketplace plugin, classic mode. Baseline for comparison.
+  - name: ClickHouse (Official)
+    type: grafana-clickhouse-datasource
+    uid: ch-official
+    access: proxy
+    editable: true
+    jsonData: &demo_connection
+      host: sql-clickhouse.clickhouse.com
+      port: 9440
+      protocol: native
+      secure: true
+      tlsSkipVerify: true
+      username: otel_demo
+      defaultDatabase: otel_v2
+      dialTimeout: '10'
+      queryTimeout: '60'
+      logs:
+        defaultDatabase: otel_v2
+        defaultTable: otel_logs
+        otelEnabled: true
+        otelVersion: '1.29.0'
+      traces:
+        defaultDatabase: otel_v2
+        defaultTable: otel_traces
+        otelEnabled: true
+        otelVersion: '1.29.0'
+        durationUnit: nanoseconds
+
+  # 2. PR build in single-table mode, focused on the OTel logs table.
+  - name: ClickHouse - Logs
+    type: grafana-clickhouse-datasource-custom
+    uid: ch-logs
+    access: proxy
+    editable: true
+    jsonData:
+      <<: *demo_connection
+      defaultTable: otel_logs
+      configMode: single-table
+      signalType: logs
+
+  # 3. PR build in single-table mode, focused on the OTel traces table.
+  - name: ClickHouse - Traces
+    type: grafana-clickhouse-datasource-custom
+    uid: ch-traces
+    access: proxy
+    editable: true
+    jsonData:
+      <<: *demo_connection
+      defaultTable: otel_traces
+      configMode: single-table
+      signalType: traces
+
+  # 4. PR build in classic mode, full access to all tables. The new
+  #    OTel dashboards in this branch are bound to this datasource's uid.
+  - name: ClickHouse
+    type: grafana-clickhouse-datasource-custom
+    uid: ch-pr-build
+    access: proxy
+    editable: true
+    isDefault: true
+    jsonData:
+      <<: *demo_connection
+      configMode: classic
