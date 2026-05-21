@@ -1,0 +1,36 @@
+# Local Grafana test stack for the ClickHouse datasource branch.
+#
+# start.sh runs the plugin build first and writes the assembled plugin
+# to .build/plugin and the patched dashboards to .build/dashboards.
+# This compose file just wires those into a Grafana container along
+# with the provisioning files.
+
+services:
+  grafana:
+    image: "grafana/grafana:${GF_VERSION:-12.4.1}"
+    container_name: clickhouse-datasource-local
+    ports:
+      - "${GF_PORT:-3033}:3000"
+    environment:
+      # Both plugins coexist. The official one is signed and arrives
+      # via the marketplace; the custom build is unsigned and needs to
+      # be allowlisted explicitly. CH_OFFICIAL_VERSION pins the
+      # marketplace version; leave it empty (default) to install
+      # whatever is current.
+      GF_INSTALL_PLUGINS: "grafana-clickhouse-datasource${CH_OFFICIAL_VERSION:+ ${CH_OFFICIAL_VERSION}}"
+      GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS: grafana-clickhouse-datasource-custom
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_LOG_LEVEL: info
+    volumes:
+      # BUILD_DIR_HOST and PROVISIONING_DIR_HOST are set by start.sh.
+      # They default to host-relative paths so docker compose up works
+      # by hand too, but start.sh overrides them with absolute paths
+      # so the same compose file resolves correctly even when called
+      # from inside a container that shells out to the host daemon.
+      - "${BUILD_DIR_HOST:-./.build}/plugin:/var/lib/grafana/plugins/grafana-clickhouse-datasource-custom:ro"
+      - "${BUILD_DIR_HOST:-./.build}/dashboards:/var/lib/grafana/dashboards:ro"
+      - "${PROVISIONING_DIR_HOST:-./provisioning}:/etc/grafana/provisioning:ro"
+    labels:
+      stack: clickhouse-datasource-local

@@ -1,0 +1,18 @@
+# Dashboard provider for the local Grafana test stack. Grafana scans
+# the mounted folder on startup and after every updateIntervalSeconds
+# tick, picking up any *.json file as a dashboard. start.sh patches the
+# datasource references in src/dashboards/*.json so they bind to the
+# PR-build datasource (uid: ch-pr-build).
+
+apiVersion: 1
+
+providers:
+  - name: 'ClickHouse PR-build dashboards'
+    orgId: 1
+    folder: ''
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards
