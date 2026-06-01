@@ -54,8 +54,13 @@ else
 fi
 
 # Step 1: build the plugin via Docker.
+# --network=host avoids IPv6 routing problems in the default bridge
+# network when the Go module proxy (storage.googleapis.com) is
+# reached from inside the build container. BuildKit still caches
+# downloaded modules in the usual layer cache.
 log "Building plugin image (this can take a couple of minutes on a cold cache)"
 docker build \
+  --network=host \
   -f "$HERE/Dockerfile.plugin" \
   --build-context plugin="$REPO_ROOT" \
   -t clickhouse-datasource-local-builder \

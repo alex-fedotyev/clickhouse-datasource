@@ -4,14 +4,16 @@
 # build, side by side.
 
 # --- Frontend ---------------------------------------------------------
-FROM node:22-alpine AS frontend
+# Node 24 is required by package.json engines as of upstream b4c522c.
+FROM node:24-alpine AS frontend
 RUN apk add --no-cache git
 WORKDIR /app
 COPY --from=plugin . .
 RUN npm ci --no-audit --no-fund && npm run build
 
 # --- Backend ---------------------------------------------------------
-FROM golang:1.26-alpine AS backend
+# go.mod pins go 1.26.3; the 1.26-alpine tag may still ship 1.26.2.
+FROM golang:1.26.3-alpine AS backend
 RUN apk add --no-cache git sed
 WORKDIR /app
 COPY --from=plugin . .
