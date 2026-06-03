@@ -7,7 +7,13 @@
 
 services:
   grafana:
-    image: "grafana/grafana:${GF_VERSION:-12.4.1}"
+    # Pinned to 11.6.0: the OTel dashboards in this branch hit a
+    # 'RangeError: Maximum call stack size exceeded' in the Logs panel
+    # renderer on Grafana 12.4.1 (frame interpolation infinite-loops on
+    # the dashboards' panel set). Reproduces on every commit since
+    # 430fbb2. To retest on a newer Grafana, run with
+    # 'GF_VERSION=12.x.x ./start.sh'.
+    image: "grafana/grafana:${GF_VERSION:-11.6.0}"
     container_name: clickhouse-datasource-local
     ports:
       - "${GF_PORT:-3033}:3000"
